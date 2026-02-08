@@ -1,0 +1,53 @@
+{
+  "name": "sada-api",
+  "version": "1.0.0",
+  "description": "API Services & Gateway with OAuth2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:ui": "pnpm --filter @sada/auth-ui run dev",
+    "build": "pnpm -r run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "lint": "eslint packages --ext .ts,.tsx",
+    "lint:fix": "eslint packages --ext .ts,.tsx --fix",
+    "format": "prettier --write \"packages/**/*.{ts,js,json}\"",
+    "format:check": "prettier --check \"packages/**/*.{ts,js,json}\"",
+    "db:generate": "pnpm --filter @sada/auth-service exec prisma generate --schema=../../prisma/schema.prisma",
+    "db:migrate": "pnpm --filter @sada/auth-service exec prisma migrate dev --schema=../../prisma/schema.prisma",
+    "db:push": "pnpm --filter @sada/auth-service exec prisma db push --schema=../../prisma/schema.prisma",
+    "db:studio": "pnpm --filter @sada/auth-service exec prisma studio --schema=../../prisma/schema.prisma",
+    "db:generate:auth": "pnpm --filter @sada/auth-service exec prisma generate --schema=../../prisma/databases/auth/schema.prisma",
+    "db:generate:main": "pnpm --filter @sada/auth-service exec prisma generate --schema=../../prisma/databases/main/schema.prisma",
+    "db:generate:reporting": "pnpm --filter @sada/auth-service exec prisma generate --schema=../../prisma/databases/reporting/schema.prisma",
+    "db:generate:all": "pnpm run db:generate:auth && pnpm run db:generate:main && pnpm run db:generate:reporting",
+    "db:migrate:auth": "pnpm --filter @sada/auth-service exec prisma migrate dev --schema=../../prisma/databases/auth/schema.prisma",
+    "db:migrate:main": "pnpm --filter @sada/auth-service exec prisma migrate dev --schema=../../prisma/databases/main/schema.prisma",
+    "db:migrate:reporting": "pnpm --filter @sada/auth-service exec prisma migrate dev --schema=../../prisma/databases/reporting/schema.prisma",
+    "db:push:auth": "pnpm --filter @sada/auth-service exec prisma db push --schema=../../prisma/databases/auth/schema.prisma",
+    "db:push:main": "pnpm --filter @sada/auth-service exec prisma db push --schema=../../prisma/databases/main/schema.prisma",
+    "db:push:reporting": "pnpm --filter @sada/auth-service exec prisma db push --schema=../../prisma/databases/reporting/schema.prisma",
+    "docker:dev": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:gravitee": "docker-compose -f docker-compose.gravitee.yml up -d",
+    "docker:prod": "docker-compose -f docker-compose.prod.yml up -d --build"
+  },
+  "devDependencies": {
+    "@prisma/client": "^6.2.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "prisma": "^6.2.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

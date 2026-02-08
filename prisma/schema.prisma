@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==============================================
+// User Model
+// ==============================================
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String?  // null for social auth users
+  name      String
+  userType  UserType @default(EXTERNAL)
+  ldapDn    String?  // LDAP Distinguished Name for internal users
+  provider  String?  // google, facebook, ldap, splp, local
+  providerId String? // External provider's user ID
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tokens    OAuthToken[]
+  authCodes OAuthAuthorizationCode[]
+
+  @@index([email])
+  @@index([provider, providerId])
+}
+
+enum UserType {
+  INTERNAL   // LDAP users (karyawan internal)
+  GOVERNMENT // SPLP users (ASN pemerintahan)
+  EXTERNAL   // Social auth users (masyarakat umum)
+}
+
+// ==============================================
+// OAuth Client Model
+// ==============================================
+model OAuthClient {
+  id           String   @id @default(cuid())
+  clientId     String   @unique
+  clientSecret String   // Hashed secret
+  name         String
+  redirectUris String[] // Allowed redirect URIs
+  grants       String[] // authorization_code, client_credentials, refresh_token
+  scopes       String[] // Allowed scopes
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tokens    OAuthToken[]
+  authCodes OAuthAuthorizationCode[]
+
+  @@index([clientId])
+}
+
+// ==============================================
+// OAuth Token Model
+// ==============================================
+model OAuthToken {
+  id                    String    @id @default(cuid())
+  accessToken           String    @unique
+  refreshToken          String?   @unique
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime?
+  scopes                String[]
+
+  userId   String?
+  user     User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId String
+  client   OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([accessToken])
+  @@index([refreshToken])
+  @@index([userId])
+  @@index([clientId])
+}
+
+// ==============================================
+// OAuth Authorization Code Model
+// ==============================================
+model OAuthAuthorizationCode {
+  id                  String   @id @default(cuid())
+  code                String   @unique
+  redirectUri         String
+  scopes              String[]
+  expiresAt           DateTime
+  codeChallenge       String?  // For PKCE
+  codeChallengeMethod String?  // S256 or plain
+
+  userId   String
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId String
+  client   OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([code])
+  @@index([userId])
+  @@index([clientId])
+}

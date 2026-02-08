@@ -1,0 +1,142 @@
+version: '3.8'
+
+services:
+  # ===========================================
+  # PostgreSQL Database
+  # ===========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: sada-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sada_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sada-network
+
+  # ===========================================
+  # Redis Cache/Session
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: sada-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sada-network
+
+  # ===========================================
+  # API Gateway
+  # ===========================================
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gateway
+    container_name: sada-gateway
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - AUTH_SERVICE_URL=http://localhost:3001
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key}
+      - RATE_LIMIT_WINDOW_MS=60000
+      - RATE_LIMIT_MAX_REQUESTS=100
+    ports:
+      - "3000:3000"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    networks:
+      - sada-network
+
+  # ===========================================
+  # Auth Service
+  # ===========================================
+  auth-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.auth
+    container_name: sada-auth-service
+    environment:
+      - NODE_ENV=development
+      - AUTH_SERVICE_PORT=3001
+      - DATABASE_URL=postgresql://postgres:postgres@localhost:5432/sada_db?schema=public
+      - REDIS_URL=redis://localhost:6379
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key}
+      # LDAP Configuration
+      - LDAP_URL=${LDAP_URL:-}
+      - LDAP_BIND_DN=${LDAP_BIND_DN:-}
+      - LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD:-}
+      - LDAP_SEARCH_BASE=${LDAP_SEARCH_BASE:-}
+      - LDAP_SEARCH_FILTER=${LDAP_SEARCH_FILTER:-}
+      # SPLP Configuration
+      - SPLP_CLIENT_ID=${SPLP_CLIENT_ID:-}
+      - SPLP_CLIENT_SECRET=${SPLP_CLIENT_SECRET:-}
+      - SPLP_AUTHORIZATION_URL=${SPLP_AUTHORIZATION_URL:-}
+      - SPLP_TOKEN_URL=${SPLP_TOKEN_URL:-}
+      - SPLP_USERINFO_URL=${SPLP_USERINFO_URL:-}
+      - SPLP_REDIRECT_URI=${SPLP_REDIRECT_URI:-}
+      # Google OAuth
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-}
+      # Facebook OAuth
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID:-}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET:-}
+      - FACEBOOK_CALLBACK_URL=${FACEBOOK_CALLBACK_URL:-}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - sada-network
+
+  # ===========================================
+  # Auth UI (SSO Frontend)
+  # ===========================================
+  auth-ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.auth-ui
+    container_name: sada-auth-ui
+    environment:
+      - NODE_ENV=production
+      - API_URL=http://localhost:3001
+    ports:
+      - "3002:80"
+    depends_on:
+      - auth-service
+    networks:
+      - sada-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+
+networks:
+  sada-network:
+    driver: bridge

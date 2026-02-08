@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+*.bak
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+prisma/migrations/.migration_lock.toml
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Docker volumes
+.docker/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Gemibi/AI
+.gemini/
+.agent/
+
+# Lock files (optional, uncomment if needed)
+# pnpm-lock.yaml
+
+# Vite
+packages/auth-ui/.vite/

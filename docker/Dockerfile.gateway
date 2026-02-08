@@ -1,0 +1,53 @@
+# Build stage
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+
+# Copy workspace files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/gateway/package.json ./packages/gateway/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY tsconfig.base.json ./
+COPY packages/shared ./packages/shared
+COPY packages/gateway ./packages/gateway
+
+# Build shared and gateway
+RUN pnpm --filter @sada/shared build
+RUN pnpm --filter @sada/gateway build
+
+# Production stage
+FROM node:22-alpine AS production
+
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+
+# Copy workspace config
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/gateway/package.json ./packages/gateway/
+
+# Install production dependencies only
+RUN pnpm install --prod
+
+# Copy built files
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/gateway/dist ./packages/gateway/dist
+
+# Set environment
+ENV NODE_ENV=production
+
+# Expose port
+EXPOSE 3000
+
+# Start gateway
+CMD ["node", "packages/gateway/dist/index.js"]

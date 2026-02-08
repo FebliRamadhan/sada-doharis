@@ -1,0 +1,114 @@
+// ==============================================
+// Auth Database Schema
+// ==============================================
+// This schema manages OAuth2 and authentication data.
+// Connection: DATABASE_AUTH_URL
+// ==============================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/client/auth"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_AUTH_URL")
+}
+
+// ==============================================
+// User Model
+// ==============================================
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String?
+  name      String
+  userType  UserType @default(EXTERNAL)
+  ldapDn    String?
+  provider  String?
+  providerId String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tokens    OAuthToken[]
+  authCodes OAuthAuthorizationCode[]
+
+  @@index([email])
+  @@index([provider, providerId])
+}
+
+enum UserType {
+  INTERNAL
+  GOVERNMENT
+  EXTERNAL
+}
+
+// ==============================================
+// OAuth Client Model
+// ==============================================
+model OAuthClient {
+  id           String   @id @default(cuid())
+  clientId     String   @unique
+  clientSecret String
+  name         String
+  redirectUris String[]
+  grants       String[]
+  scopes       String[]
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tokens    OAuthToken[]
+  authCodes OAuthAuthorizationCode[]
+
+  @@index([clientId])
+}
+
+// ==============================================
+// OAuth Token Model
+// ==============================================
+model OAuthToken {
+  id                    String    @id @default(cuid())
+  accessToken           String    @unique
+  refreshToken          String?   @unique
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime?
+  scopes                String[]
+
+  userId   String?
+  user     User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId String
+  client   OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([accessToken])
+  @@index([refreshToken])
+  @@index([userId])
+  @@index([clientId])
+}
+
+// ==============================================
+// OAuth Authorization Code Model
+// ==============================================
+model OAuthAuthorizationCode {
+  id                  String   @id @default(cuid())
+  code                String   @unique
+  redirectUri         String
+  scopes              String[]
+  expiresAt           DateTime
+  codeChallenge       String?
+  codeChallengeMethod String?
+
+  userId   String
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId String
+  client   OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([code])
+  @@index([userId])
+  @@index([clientId])
+}

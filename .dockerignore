@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Git
+.git/
+.gitignore
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.sublime-*
+
+# Logs
+logs/
+*.log
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+**/__tests__/
+coverage/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development config
+.editorconfig
+.prettierrc*
+.eslintrc*
+eslint.config.*
+tsconfig.*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma migrations (handled separately)
+# prisma/migrations/
+
+# Docker config files
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# AI/Agent files
+.gemini/
+.agent/
+
+# Build artifacts from other packages
+packages/auth-ui/dist/
+packages/*/node_modules/
+
+# Vite cache
+packages/auth-ui/.vite/
+
+# Temporary
+tmp/
+temp/
+*.tmp

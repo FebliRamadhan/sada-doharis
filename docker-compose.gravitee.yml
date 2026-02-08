@@ -1,0 +1,113 @@
+version: '3.8'
+
+# Gravitee.io API Management Stack
+# Run with: docker-compose -f docker-compose.gravitee.yml up -d
+
+services:
+  # ===========================================
+  # MongoDB (Gravitee.io Database)
+  # ===========================================
+  mongodb:
+    image: mongo:6.0
+    container_name: gravitee-mongodb
+    restart: always
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - gravitee-network
+
+  # ===========================================
+  # Elasticsearch (Gravitee.io Analytics)
+  # ===========================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: gravitee-elasticsearch
+    restart: always
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - gravitee-network
+
+  # ===========================================
+  # Gravitee API Gateway
+  # ===========================================
+  gateway:
+    image: graviteeio/apim-gateway:4
+    container_name: gravitee-gateway
+    restart: always
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mongodb
+      - elasticsearch
+    environment:
+      - gravitee_management_mongodb_uri=mongodb://mongodb:27017/gravitee?serverSelectionTimeoutMS=5000&connectTimeoutMS=5000&socketTimeoutMS=5000
+      - gravitee_ratelimit_mongodb_uri=mongodb://mongodb:27017/gravitee?serverSelectionTimeoutMS=5000&connectTimeoutMS=5000&socketTimeoutMS=5000
+      - gravitee_reporters_elasticsearch_endpoints_0=http://elasticsearch:9200
+    networks:
+      - gravitee-network
+      - sada-network
+
+  # ===========================================
+  # Gravitee Management API
+  # ===========================================
+  management_api:
+    image: graviteeio/apim-management-api:4
+    container_name: gravitee-management-api
+    restart: always
+    ports:
+      - "8083:8083"
+    depends_on:
+      - mongodb
+      - elasticsearch
+    environment:
+      - gravitee_management_mongodb_uri=mongodb://mongodb:27017/gravitee?serverSelectionTimeoutMS=5000&connectTimeoutMS=5000&socketTimeoutMS=5000
+      - gravitee_analytics_elasticsearch_endpoints_0=http://elasticsearch:9200
+    networks:
+      - gravitee-network
+
+  # ===========================================
+  # Gravitee Management Console (Admin UI)
+  # ===========================================
+  management_ui:
+    image: graviteeio/apim-management-ui:4
+    container_name: gravitee-management-ui
+    restart: always
+    ports:
+      - "8084:8080"
+    depends_on:
+      - management_api
+    environment:
+      - MGMT_API_URL=http://localhost:8083/management/
+    networks:
+      - gravitee-network
+
+  # ===========================================
+  # Gravitee Developer Portal
+  # ===========================================
+  portal_ui:
+    image: graviteeio/apim-portal-ui:4
+    container_name: gravitee-portal-ui
+    restart: always
+    ports:
+      - "8085:8080"
+    depends_on:
+      - management_api
+    environment:
+      - PORTAL_API_URL=http://localhost:8083/portal/
+    networks:
+      - gravitee-network
+
+volumes:
+  mongodb_data:
+  elasticsearch_data:
+
+networks:
+  gravitee-network:
+    driver: bridge
+  sada-network:
+    external: true

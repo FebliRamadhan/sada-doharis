@@ -1,0 +1,127 @@
+// ==============================================
+// Main Database Schema
+// ==============================================
+// This schema manages core business data.
+// Connection: DATABASE_MAIN_URL
+// ==============================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/client/main"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_MAIN_URL")
+}
+
+// ==============================================
+// Example: Organization Model
+// ==============================================
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  departments Department[]
+  employees   Employee[]
+
+  @@index([code])
+}
+
+// ==============================================
+// Example: Department Model
+// ==============================================
+model Department {
+  id             String   @id @default(cuid())
+  name           String
+  code           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parentId       String?
+  parent         Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children       Department[] @relation("DepartmentHierarchy")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  employees Employee[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@index([parentId])
+}
+
+// ==============================================
+// Example: Employee Model
+// ==============================================
+model Employee {
+  id             String      @id @default(cuid())
+  employeeNumber String      @unique
+  name           String
+  email          String?
+  phone          String?
+  position       String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  departmentId   String?
+  department     Department?  @relation(fields: [departmentId], references: [id])
+  userId         String?      // Link to auth database user
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([employeeNumber])
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([userId])
+}
+
+// ==============================================
+// Example: Master Data - Province
+// ==============================================
+model Province {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cities City[]
+}
+
+// ==============================================
+// Example: Master Data - City
+// ==============================================
+model City {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  name       String
+  provinceId String
+  province   Province @relation(fields: [provinceId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  districts District[]
+
+  @@index([provinceId])
+}
+
+// ==============================================
+// Example: Master Data - District
+// ==============================================
+model District {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  cityId    String
+  city      City     @relation(fields: [cityId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cityId])
+}

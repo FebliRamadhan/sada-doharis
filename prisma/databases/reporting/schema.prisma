@@ -1,0 +1,121 @@
+// ==============================================
+// Reporting Database Schema
+// ==============================================
+// This schema manages analytics and reporting data.
+// Connection: DATABASE_REPORTING_URL
+// ==============================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/client/reporting"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_REPORTING_URL")
+}
+
+// ==============================================
+// API Analytics
+// ==============================================
+model ApiLog {
+  id            String   @id @default(cuid())
+  requestId     String   @unique
+  method        String
+  path          String
+  statusCode    Int
+  responseTime  Int      // in milliseconds
+  userId        String?
+  clientId      String?
+  userAgent     String?
+  ipAddress     String?
+  requestBody   Json?
+  responseBody  Json?
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([clientId])
+  @@index([path])
+  @@index([statusCode])
+}
+
+// ==============================================
+// Audit Trail
+// ==============================================
+model AuditLog {
+  id          String   @id @default(cuid())
+  entityType  String   // e.g., "User", "OAuthClient", "Employee"
+  entityId    String
+  action      String   // "CREATE", "UPDATE", "DELETE"
+  userId      String?
+  changes     Json?    // { field: { old: value, new: value } }
+  metadata    Json?    // Additional context
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ==============================================
+// Dashboard Metrics (Aggregated Data)
+// ==============================================
+model DailyMetric {
+  id            String   @id @default(cuid())
+  date          DateTime @db.Date
+  metricType    String   // e.g., "api_requests", "active_users", "new_registrations"
+  metricValue   Float
+  dimensions    Json?    // { endpoint: "/api/v1/users", method: "GET" }
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([date, metricType, dimensions])
+  @@index([date])
+  @@index([metricType])
+}
+
+// ==============================================
+// Report Definitions
+// ==============================================
+model ReportDefinition {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  query       String   // SQL query or query builder JSON
+  parameters  Json?    // Report parameters schema
+  schedule    String?  // Cron expression
+  createdBy   String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  executions ReportExecution[]
+
+  @@index([createdBy])
+}
+
+// ==============================================
+// Report Executions
+// ==============================================
+model ReportExecution {
+  id         String   @id @default(cuid())
+  reportId   String
+  report     ReportDefinition @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  status     String   // "PENDING", "RUNNING", "COMPLETED", "FAILED"
+  parameters Json?
+  result     Json?
+  filePath   String?  // Path to generated file
+  error      String?
+  startedAt  DateTime?
+  completedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([reportId])
+  @@index([status])
+  @@index([createdAt])
+}
