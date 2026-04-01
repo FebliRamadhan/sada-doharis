@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 import { prisma } from '../config/database.js';
 import { tokenService } from './token.service.js';
+import { clientService } from './client.service.js';
+import { getRedis } from '../config/redis.js';
+import { auditService, AUDIT_ACTIONS } from './audit.service.js';
 import {
     InvalidClientError,
     InvalidGrantError,
@@ -25,6 +28,7 @@ export const oauthService = {
         userId: string;
         redirectUri: string;
         scopes: string[];
+        nonce?: string;
         codeChallenge?: string;
         codeChallengeMethod?: string;
     }) {
@@ -58,6 +62,7 @@ export const oauthService = {
                 redirectUri: data.redirectUri,
                 scopes: data.scopes,
                 expiresAt,
+                nonce: data.nonce,
                 codeChallenge: data.codeChallenge,
                 codeChallengeMethod: data.codeChallengeMethod,
                 userId: data.userId,
@@ -80,12 +85,9 @@ export const oauthService = {
         redirectUri: string;
         codeVerifier?: string;
     }) {
-        // Validate client
-        const client = await prisma.oAuthClient.findUnique({
-            where: { clientId: data.clientId },
-        });
-
-        if (!client || client.clientSecret !== data.clientSecret || !client.isActive) {
+        // Validate client using bcrypt comparison
+        const client = await clientService.validateCredentials(data.clientId, data.clientSecret);
+        if (!client) {
             throw new InvalidClientError('Invalid client credentials');
         }
 
@@ -150,6 +152,21 @@ export const oauthService = {
             clientId: client.id,
         });
 
+        // Generate OIDC ID token if openid scope requested
+        let id_token: string | undefined;
+        if (authCode.scopes.includes('openid') && authCode.user) {
+            id_token = tokenService.generateIdToken({
+                userId: authCode.userId,
+                clientId: data.clientId,
+                nonce: authCode.nonce ?? undefined,
+                scopes: authCode.scopes,
+                userInfo: {
+                    email: authCode.user.email,
+                    name: authCode.user.name,
+                },
+            });
+        }
+
         logger.info('Tokens issued via authorization code', {
             clientId: data.clientId,
             userId: authCode.userId
@@ -161,6 +178,7 @@ export const oauthService = {
             expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
             refresh_token: refreshToken.token,
             scope: authCode.scopes.join(' '),
+            ...(id_token ? { id_token } : {}),
         };
     },
 
@@ -172,12 +190,9 @@ export const oauthService = {
         clientSecret: string;
         scopes: string[];
     }) {
-        // Validate client
-        const client = await prisma.oAuthClient.findUnique({
-            where: { clientId: data.clientId },
-        });
-
-        if (!client || client.clientSecret !== data.clientSecret || !client.isActive) {
+        // Validate client using bcrypt comparison
+        const client = await clientService.validateCredentials(data.clientId, data.clientSecret);
+        if (!client) {
             throw new InvalidClientError('Invalid client credentials');
         }
 
@@ -225,12 +240,9 @@ export const oauthService = {
         clientId: string;
         clientSecret: string;
     }) {
-        // Validate client
-        const client = await prisma.oAuthClient.findUnique({
-            where: { clientId: data.clientId },
-        });
-
-        if (!client || client.clientSecret !== data.clientSecret || !client.isActive) {
+        // Validate client using bcrypt comparison
+        const client = await clientService.validateCredentials(data.clientId, data.clientSecret);
+        if (!client) {
             throw new InvalidClientError('Invalid client credentials');
         }
 
@@ -283,10 +295,24 @@ export const oauthService = {
     },
 
     /**
-     * Revoke token
+     * Revoke token — removes from DB and adds to Redis blacklist
      */
     async revokeToken(token: string): Promise<void> {
         await tokenService.revokeToken(token);
+
+        // Add to Redis blacklist so gateway enforces revocation immediately
+        try {
+            const payload = tokenService.verifyToken(token);
+            const ttl = payload.exp - Math.floor(Date.now() / 1000);
+            if (ttl > 0) {
+                const redis = getRedis();
+                await redis.setex(`blacklist:${token}`, ttl, '1');
+            }
+        } catch {
+            // Token may be expired/invalid — DB deletion is sufficient
+        }
+
+        void auditService.log({ action: AUDIT_ACTIONS.TOKEN_REVOKED });
         logger.info('Token revoked');
     },
 

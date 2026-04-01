@@ -1,15 +1,24 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { prisma } from '../config/database.js';
-import type { AccessTokenPayload, RefreshTokenPayload } from '@sada/shared';
+import { getPrivateKey, getPublicKey, getKeyId } from '../config/keys.js';
+import type { AccessTokenPayload, RefreshTokenPayload, OIDCIdTokenPayload } from '@sada/shared';
 
-const JWT_SECRET = process.env['JWT_SECRET'] ?? 'default-secret';
+const JWT_SECRET_RAW = process.env['JWT_SECRET'];
+if (!JWT_SECRET_RAW || JWT_SECRET_RAW === 'default-secret') {
+    if (process.env['NODE_ENV'] === 'production') {
+        throw new Error('FATAL: JWT_SECRET must be set in production');
+    }
+    console.warn('[WARN] JWT_SECRET is not set or is default. Set JWT_SECRET for security.');
+}
+
 const ACCESS_TOKEN_EXPIRES = process.env['JWT_ACCESS_TOKEN_EXPIRES_IN'] ?? '15m';
 const REFRESH_TOKEN_EXPIRES = process.env['JWT_REFRESH_TOKEN_EXPIRES_IN'] ?? '7d';
+const OIDC_ISSUER = process.env['OIDC_ISSUER'] ?? 'http://localhost:3001';
 
 function parseExpiresIn(expiresIn: string): number {
     const match = expiresIn.match(/^(\d+)([smhd])$/);
-    if (!match) return 3600; // Default 1 hour
+    if (!match) return 3600;
 
     const value = parseInt(match[1]!, 10);
     const unit = match[2];
@@ -25,7 +34,7 @@ function parseExpiresIn(expiresIn: string): number {
 
 export const tokenService = {
     /**
-     * Generate access token for user
+     * Generate RS256-signed access token
      */
     generateAccessToken(
         userId: string,
@@ -43,13 +52,16 @@ export const tokenService = {
             iat: Math.floor(Date.now() / 1000),
         };
 
-        const token = jwt.sign(payload, JWT_SECRET);
+        const token = jwt.sign(payload, getPrivateKey(), {
+            algorithm: 'RS256',
+            header: { alg: 'RS256', kid: getKeyId() },
+        } as jwt.SignOptions);
 
         return { token, expiresAt };
     },
 
     /**
-     * Generate refresh token
+     * Generate RS256-signed refresh token
      */
     generateRefreshToken(
         userId: string,
@@ -67,16 +79,55 @@ export const tokenService = {
             iat: Math.floor(Date.now() / 1000),
         };
 
-        const token = jwt.sign(payload, JWT_SECRET);
+        const token = jwt.sign(payload, getPrivateKey(), {
+            algorithm: 'RS256',
+            header: { alg: 'RS256', kid: getKeyId() },
+        } as jwt.SignOptions);
 
         return { token, expiresAt, jti };
     },
 
     /**
-     * Verify and decode token
+     * Generate RS256-signed OIDC ID token
+     */
+    generateIdToken(params: {
+        userId: string;
+        clientId: string;
+        nonce?: string;
+        scopes: string[];
+        userInfo: { email: string; name: string; email_verified?: boolean };
+    }): string {
+        const now = Math.floor(Date.now() / 1000);
+        const payload: OIDCIdTokenPayload = {
+            iss: OIDC_ISSUER,
+            sub: params.userId,
+            aud: params.clientId,
+            exp: now + 3600,
+            iat: now,
+            nonce: params.nonce,
+        };
+
+        if (params.scopes.includes('profile')) {
+            payload.name = params.userInfo.name;
+            payload.preferred_username = params.userInfo.email.split('@')[0];
+        }
+
+        if (params.scopes.includes('email')) {
+            payload.email = params.userInfo.email;
+            payload.email_verified = params.userInfo.email_verified ?? false;
+        }
+
+        return jwt.sign(payload, getPrivateKey(), {
+            algorithm: 'RS256',
+            header: { alg: 'RS256', kid: getKeyId() },
+        } as jwt.SignOptions);
+    },
+
+    /**
+     * Verify and decode token using RS256 public key
      */
     verifyToken<T extends AccessTokenPayload | RefreshTokenPayload>(token: string): T {
-        return jwt.verify(token, JWT_SECRET) as T;
+        return jwt.verify(token, getPublicKey(), { algorithms: ['RS256'] }) as T;
     },
 
     /**

@@ -30,7 +30,12 @@ const createProxy = (target: string, pathRewrite?: Record<string, string>): Opti
     },
 });
 
-// OAuth endpoints (public)
+// OIDC discovery endpoints (public, no auth required)
+router.use('/.well-known', createProxyMiddleware(createProxy(AUTH_SERVICE_URL, {
+    '^/api/.well-known': '/.well-known',
+})));
+
+// OAuth / OIDC endpoints (public — auth handled inside auth-service)
 router.use('/oauth', createProxyMiddleware(createProxy(AUTH_SERVICE_URL, {
     '^/api/oauth': '/oauth',
 })));

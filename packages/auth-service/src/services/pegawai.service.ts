@@ -1,6 +1,6 @@
 /**
  * Pegawai Service
- * Fetches internal employee profiles from tb_master_pegawai MySQL table
+ * Fetches internal employee profiles from master_pegawai MySQL table
  */
 
 import { createLogger, NotFoundError } from '@sada/shared';
@@ -19,7 +19,7 @@ const MYSQL_DATABASE = process.env['MYSQL_DATABASE'] ?? 'main_db';
 const INTERNAL_EMAIL_DOMAIN = process.env['INTERNAL_EMAIL_DOMAIN'] ?? 'bpjstk.go.id';
 
 /**
- * Employee profile from tb_master_pegawai
+ * Employee profile from master_pegawai
  */
 export interface Pegawai {
     nip: string;
@@ -69,19 +69,17 @@ export const pegawaiService = {
 
         try {
             const [rows] = await connection.execute<mysql.RowDataPacket[]>(
-                `SELECT 
-                    nip, 
-                    nama, 
-                    email, 
-                    jabatan, 
-                    unit_kerja, 
+                `SELECT
+                    nip,
+                    nama,
+                    email_kantor AS email,
                     unit_staf_id,
-                    foto,
-                    status
-                FROM tb_master_pegawai 
-                WHERE email = ? AND status = 'aktif'
+                    photo AS foto,
+                    dihapus
+                FROM master_pegawai
+                WHERE (email_kantor = ? OR email_pribadi = ?) AND dihapus = 'tidak'
                 LIMIT 1`,
-                [email.toLowerCase()]
+                [email.toLowerCase(), email.toLowerCase()]
             );
 
             if (rows.length === 0) {
@@ -93,11 +91,9 @@ export const pegawaiService = {
                 nip: row.nip as string,
                 nama: row.nama as string,
                 email: row.email as string,
-                jabatan: row.jabatan as string | undefined,
-                unit_kerja: row.unit_kerja as string | undefined,
                 unit_staf_id: row.unit_staf_id as number | undefined,
                 foto: row.foto as string | undefined,
-                status: row.status as string | undefined,
+                status: 'aktif',
             };
         } catch (error) {
             logger.error('Failed to fetch pegawai by email', { email, error });
@@ -113,17 +109,15 @@ export const pegawaiService = {
 
         try {
             const [rows] = await connection.execute<mysql.RowDataPacket[]>(
-                `SELECT 
-                    nip, 
-                    nama, 
-                    email, 
-                    jabatan, 
-                    unit_kerja, 
+                `SELECT
+                    nip,
+                    nama,
+                    email_kantor AS email,
                     unit_staf_id,
-                    foto,
-                    status
-                FROM tb_master_pegawai 
-                WHERE nip = ? AND status = 'aktif'
+                    photo AS foto,
+                    dihapus
+                FROM master_pegawai
+                WHERE nip = ? AND dihapus = 'tidak'
                 LIMIT 1`,
                 [nip]
             );
@@ -137,11 +131,9 @@ export const pegawaiService = {
                 nip: row.nip as string,
                 nama: row.nama as string,
                 email: row.email as string,
-                jabatan: row.jabatan as string | undefined,
-                unit_kerja: row.unit_kerja as string | undefined,
                 unit_staf_id: row.unit_staf_id as number | undefined,
                 foto: row.foto as string | undefined,
-                status: row.status as string | undefined,
+                status: 'aktif',
             };
         } catch (error) {
             logger.error('Failed to fetch pegawai by NIP', { nip, error });

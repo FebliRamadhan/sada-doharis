@@ -52,10 +52,13 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
-      - AUTH_SERVICE_URL=http://localhost:3001
+      - AUTH_SERVICE_URL=http://auth-service:3001
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key}
+      - REDIS_URL=redis://redis:6379
       - RATE_LIMIT_WINDOW_MS=60000
       - RATE_LIMIT_MAX_REQUESTS=100
+      - AUTH_RATE_LIMIT_WINDOW_MS=60000
+      - AUTH_RATE_LIMIT_MAX_REQUESTS=5
     ports:
       - "3000:3000"
     depends_on:
@@ -75,8 +78,9 @@ services:
     environment:
       - NODE_ENV=development
       - AUTH_SERVICE_PORT=3001
-      - DATABASE_URL=postgresql://postgres:postgres@localhost:5432/sada_db?schema=public
-      - REDIS_URL=redis://localhost:6379
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/sada_db?schema=public
+      - REDIS_URL=redis://redis:6379
+      - OIDC_ISSUER=http://auth-service:3001
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key}
       # LDAP Configuration
       - LDAP_URL=${LDAP_URL:-}
@@ -84,6 +88,13 @@ services:
       - LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD:-}
       - LDAP_SEARCH_BASE=${LDAP_SEARCH_BASE:-}
       - LDAP_SEARCH_FILTER=${LDAP_SEARCH_FILTER:-}
+      - INTERNAL_EMAIL_DOMAIN=${INTERNAL_EMAIL_DOMAIN:-menpan.go.id}
+      # MySQL (tb_master_pegawai)
+      - MYSQL_HOST=${MYSQL_HOST:-}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_USER=${MYSQL_USER:-}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-main_db}
       # SPLP Configuration
       - SPLP_CLIENT_ID=${SPLP_CLIENT_ID:-}
       - SPLP_CLIENT_SECRET=${SPLP_CLIENT_SECRET:-}

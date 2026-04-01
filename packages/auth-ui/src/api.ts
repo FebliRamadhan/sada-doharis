@@ -81,15 +81,15 @@ export const SCOPE_DESCRIPTIONS: Record<string, { name: string; description: str
 
 // Helper functions
 export function getStoredToken(): string | null {
-    return localStorage.getItem(STORAGE_KEYS.accessToken);
+    return sessionStorage.getItem(STORAGE_KEYS.accessToken);
 }
 
 export function setStoredToken(token: string): void {
-    localStorage.setItem(STORAGE_KEYS.accessToken, token);
+    sessionStorage.setItem(STORAGE_KEYS.accessToken, token);
 }
 
 export function getStoredUser(): User | null {
-    const userStr = localStorage.getItem(STORAGE_KEYS.user);
+    const userStr = sessionStorage.getItem(STORAGE_KEYS.user);
     if (!userStr) return null;
     try {
         return JSON.parse(userStr) as User;
@@ -99,13 +99,13 @@ export function getStoredUser(): User | null {
 }
 
 export function setStoredUser(user: User): void {
-    localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
+    sessionStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
 }
 
 export function clearAuthStorage(): void {
-    localStorage.removeItem(STORAGE_KEYS.accessToken);
-    localStorage.removeItem(STORAGE_KEYS.refreshToken);
-    localStorage.removeItem(STORAGE_KEYS.user);
+    sessionStorage.removeItem(STORAGE_KEYS.accessToken);
+    sessionStorage.removeItem(STORAGE_KEYS.refreshToken);
+    sessionStorage.removeItem(STORAGE_KEYS.user);
 }
 
 export function getUrlParams(): URLSearchParams {
@@ -147,15 +147,18 @@ export async function apiRequest<T>(
             headers,
         });
 
-        const data = await response.json();
+        const json = await response.json();
 
         if (!response.ok) {
             return {
                 success: false,
-                error: data.error?.message || data.message || 'Request failed',
+                error: json?.error?.message || json?.message || 'Request failed',
             };
         }
 
+        // Backend wraps all responses: { success: true, data: <payload> }
+        // Unwrap so callers receive the payload directly
+        const data = json?.data !== undefined ? json.data : json;
         return { success: true, data };
     } catch (err) {
         return {

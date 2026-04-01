@@ -179,3 +179,52 @@ export interface SplpUser {
     jabatan?: string;
     instansi?: string;
 }
+
+// ============================================
+// OIDC Types
+// ============================================
+
+export interface OIDCIdTokenPayload {
+    iss: string;
+    sub: string;
+    aud: string;
+    exp: number;
+    iat: number;
+    nonce?: string;
+    email?: string;
+    name?: string;
+    email_verified?: boolean;
+    preferred_username?: string;
+}
+
+export interface OIDCUserInfoResponse {
+    sub: string;
+    name?: string;
+    email?: string;
+    email_verified?: boolean;
+    preferred_username?: string;
+}
+
+export interface TokenIntrospectionResponse {
+    active: boolean;
+    sub?: string;
+    scope?: string;
+    client_id?: string;
+    token_type?: string;
+    exp?: number;
+    iat?: number;
+    username?: string;
+}
+
+export interface JWK {
+    kty: string;
+    use: string;
+    kid: string;
+    alg: string;
+    n: string;
+    e: string;
+}
+
+export interface JWKSResponse {
+    keys: JWK[];
+}

@@ -1,28 +1,79 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SADA SSO</title>
-    <meta name="description" content="SADA Single Sign-On Portal">
+    <title>SADA SSO — Portal Layanan Terpadu Kementerian PANRB</title>
+    <meta name="description" content="Single Sign-On Portal Kementerian Pendayagunaan Aparatur Negara dan Reformasi Birokrasi">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#002B5B">
+
+    <!-- Preconnect for performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Fonts: Plus Jakarta Sans (headings) + Inter (body) -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="/src/style.css">
 </head>
 
 <body>
-    <div class="auth-container">
-        <div id="app">
-            <!-- SPA content will be rendered here -->
-            <div class="auth-card">
-                <div class="loading-state">
-                    <div class="spinner spinner-lg"></div>
-                    <p>Loading...</p>
+    <!-- Skip link for screen readers -->
+    <a class="skip-link" href="#main-content">Langsung ke konten utama</a>
+
+    <div class="auth-container" id="main-content">
+        <!-- LEFT PANEL: Government brand identity -->
+        <aside class="brand-panel" role="complementary" aria-label="Identitas Kementerian PANRB">
+            <div class="brand-panel-accent" aria-hidden="true"></div>
+
+            <!-- Ministry header — official PANRB logo in white card -->
+            <header class="brand-header">
+                <div class="brand-logo-card">
+                    <img src="/logo-panrb.png"
+                         alt="Logo Kementerian Pendayagunaan Aparatur Negara dan Reformasi Birokrasi"
+                         width="240" height="52">
+                </div>
+            </header>
+
+            <!-- Hero messaging -->
+            <div class="brand-hero">
+                <h2>
+                    Satu Akun untuk<br>
+                    <span class="accent">Semua Layanan</span><br>
+                    PANRB
+                </h2>
+                <p>
+                    Portal SSO resmi Kementerian PANRB.
+                </p>
+
+            </div>
+
+            <!-- Footer -->
+            <footer class="brand-footer">
+                <p>© 2025 Kementerian PANRB. Hak cipta dilindungi.</p>
+                <span class="version-badge">
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" aria-hidden="true">
+                        <circle cx="4" cy="4" r="3"/>
+                    </svg>
+                    SADA v2.0
+                </span>
+            </footer>
+        </aside>
+
+        <!-- RIGHT PANEL: Login form (SPA mount point) -->
+        <main class="form-panel" role="main" id="main-content">
+            <div id="app">
+                <!-- SPA content rendered by router -->
+                <div class="auth-card">
+                    <div class="loading-state">
+                        <div class="spinner spinner-dark spinner-lg"></div>
+                        <p>Memuat...</p>
+                    </div>
                 </div>
             </div>
-        </div>
+        </main>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

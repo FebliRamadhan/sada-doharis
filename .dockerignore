@@ -38,7 +38,8 @@ docs/
 .prettierrc*
 .eslintrc*
 eslint.config.*
-tsconfig.*.json
+# Note: tsconfig.base.json is needed by Dockerfiles, don't exclude it
+vitest.config.ts
 
 # OS
 .DS_Store

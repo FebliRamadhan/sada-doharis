@@ -1,8 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { UnauthorizedError, type AccessTokenPayload } from '@sada/shared';
-
-const JWT_SECRET = process.env['JWT_SECRET'] ?? 'default-secret';
+import { getRedis } from '../config/redis.js';
+import { getVerificationKey } from '../config/jwks.js';
 
 declare global {
     namespace Express {
@@ -13,13 +13,13 @@ declare global {
 }
 
 /**
- * Verify Bearer token and attach user to request
+ * Verify RS256 Bearer token, check Redis blacklist, attach user to request
  */
-export function authMiddleware(
+export async function authMiddleware(
     req: Request,
     _res: Response,
     next: NextFunction
-): void {
+): Promise<void> {
     try {
         const authHeader = req.headers.authorization;
 
@@ -28,7 +28,26 @@ export function authMiddleware(
         }
 
         const token = authHeader.substring(7);
-        const payload = jwt.verify(token, JWT_SECRET) as AccessTokenPayload;
+
+        // Decode header to get kid for key lookup
+        const decoded = jwt.decode(token, { complete: true });
+        const kid = (decoded?.header as { kid?: string })?.kid;
+
+        const publicKey = await getVerificationKey(kid);
+        const payload = jwt.verify(token, publicKey, { algorithms: ['RS256'] }) as AccessTokenPayload;
+
+        // Check Redis token blacklist (enforces revocation before JWT expiry)
+        try {
+            const redis = getRedis();
+            const isBlacklisted = await redis.get(`blacklist:${token}`);
+            if (isBlacklisted) {
+                throw new UnauthorizedError('Token has been revoked');
+            }
+        } catch (redisError) {
+            if (redisError instanceof UnauthorizedError) throw redisError;
+            // Redis unavailable — log and continue to avoid full outage
+            console.error('[WARN] Redis blacklist check failed:', (redisError as Error).message);
+        }
 
         req.user = payload;
         next();
@@ -46,7 +65,7 @@ export function authMiddleware(
 }
 
 /**
- * Optional auth - don't throw if no token
+ * Optional auth — don't throw if no token
  */
 export function optionalAuth(
     req: Request,
@@ -54,12 +73,10 @@ export function optionalAuth(
     next: NextFunction
 ): void {
     const authHeader = req.headers.authorization;
-
     if (!authHeader?.startsWith('Bearer ')) {
         next();
         return;
     }
-
     authMiddleware(req, res, next);
 }
 

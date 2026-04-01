@@ -67,6 +67,9 @@ services:
     environment:
       - gravitee_management_mongodb_uri=mongodb://mongodb:27017/gravitee?serverSelectionTimeoutMS=5000&connectTimeoutMS=5000&socketTimeoutMS=5000
       - gravitee_analytics_elasticsearch_endpoints_0=http://elasticsearch:9200
+      - gravitee_portal_entrypoint=http://localhost:8085
+      - gravitee_console_ui_url=http://localhost:8084
+      - gravitee_portal_ui_url=http://localhost:8085
     networks:
       - gravitee-network
 
@@ -83,6 +86,7 @@ services:
       - management_api
     environment:
       - MGMT_API_URL=http://localhost:8083/management/
+      - PORTAL_UI_URL=http://localhost:8085
     networks:
       - gravitee-network
 
@@ -106,8 +110,10 @@ volumes:
   mongodb_data:
   elasticsearch_data:
 
+
 networks:
   gravitee-network:
     driver: bridge
   sada-network:
     external: true
+    name: sada-api_sada-network

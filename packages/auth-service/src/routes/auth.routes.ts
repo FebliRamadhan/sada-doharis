@@ -7,9 +7,26 @@ import { userService } from '../services/user.service.js';
 import { tokenService } from '../services/token.service.js';
 import { splpService } from '../services/splp.service.js';
 import { ldapService } from '../services/ldap.service.js';
+import { prisma } from '../config/database.js';
+import { getRedis } from '../config/redis.js';
 import { sendSuccess, sendError, ValidationError } from '@sada/shared';
+import { auditService, AUDIT_ACTIONS } from '../services/audit.service.js';
 
 const router = Router();
+
+// Lazy-cached system client id to avoid per-request DB lookups
+let systemClientId: string | null = null;
+async function getSystemClientId(): Promise<string> {
+    if (!systemClientId) {
+        const client = await prisma.oAuthClient.findUnique({
+            where: { clientId: 'system-internal' },
+            select: { id: true },
+        });
+        if (!client) throw new Error('System OAuth client not found');
+        systemClientId = client.id;
+    }
+    return systemClientId;
+}
 
 // Validation schemas
 const loginSchema = z.object({
@@ -93,8 +110,26 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         const user = await userService.loginWithPassword(parsed.data.email, parsed.data.password);
 
         // Generate tokens
-        const accessToken = tokenService.generateAccessToken(user.id, 'user', ['profile', 'email']);
+        const scopes = ['profile', 'email'];
+        const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
         const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
+
+        await tokenService.storeToken({
+            accessToken: accessToken.token,
+            refreshToken: refreshToken.token,
+            accessTokenExpiresAt: accessToken.expiresAt,
+            refreshTokenExpiresAt: refreshToken.expiresAt,
+            scopes,
+            userId: user.id,
+            clientId: await getSystemClientId(),
+        });
+
+        void auditService.log({
+            action: AUDIT_ACTIONS.LOGIN,
+            userId: user.id,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
 
         sendSuccess(res, {
             user,
@@ -173,8 +208,19 @@ router.post('/ldap/login', async (req: Request, res: Response, next: NextFunctio
         const user = await userService.loginWithLdap(parsed.data.username, parsed.data.password);
 
         // Generate tokens
-        const accessToken = tokenService.generateAccessToken(user.id, 'user', ['profile', 'email', 'internal']);
+        const scopes = ['profile', 'email', 'internal'];
+        const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
         const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
+
+        await tokenService.storeToken({
+            accessToken: accessToken.token,
+            refreshToken: refreshToken.token,
+            accessTokenExpiresAt: accessToken.expiresAt,
+            refreshTokenExpiresAt: refreshToken.expiresAt,
+            scopes,
+            userId: user.id,
+            clientId: await getSystemClientId(),
+        });
 
         sendSuccess(res, {
             user,
@@ -201,14 +247,15 @@ router.post('/ldap/login', async (req: Request, res: Response, next: NextFunctio
  *       400:
  *         description: SPLP not configured
  */
-router.get('/splp/authorize', (req: Request, res: Response): void => {
+router.get('/splp/authorize', async (req: Request, res: Response): Promise<void> => {
     if (!splpService.isConfigured()) {
         sendError(res, 'NOT_CONFIGURED', 'SPLP is not configured', 400);
         return;
     }
 
     const state = crypto.randomBytes(16).toString('hex');
-    // TODO: Store state in session for verification
+    const redis = getRedis();
+    await redis.setex(`splp_state:${state}`, 600, 'valid');
 
     const authUrl = splpService.getAuthorizationUrl(state);
     res.redirect(authUrl);
@@ -251,15 +298,34 @@ router.get('/splp/callback', async (req: Request, res: Response, next: NextFunct
             throw new ValidationError('Missing authorization code');
         }
 
-        // TODO: Verify state matches stored state
+        // Verify CSRF state
+        if (!state || typeof state !== 'string') {
+            throw new ValidationError('Missing state parameter');
+        }
+        const redis = getRedis();
+        const storedState = await redis.get(`splp_state:${state}`);
+        if (!storedState) {
+            throw new ValidationError('Invalid or expired state parameter');
+        }
+        await redis.del(`splp_state:${state}`);
 
         const user = await userService.loginWithSplp(code);
 
         // Generate tokens
-        const accessToken = tokenService.generateAccessToken(user.id, 'user', ['profile', 'email', 'government']);
+        const scopes = ['profile', 'email', 'government'];
+        const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
         const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
 
-        // In a real app, you'd redirect to frontend with tokens in URL or set cookies
+        await tokenService.storeToken({
+            accessToken: accessToken.token,
+            refreshToken: refreshToken.token,
+            accessTokenExpiresAt: accessToken.expiresAt,
+            refreshTokenExpiresAt: refreshToken.expiresAt,
+            scopes,
+            userId: user.id,
+            clientId: await getSystemClientId(),
+        });
+
         sendSuccess(res, {
             user,
             access_token: accessToken.token,
@@ -336,8 +402,26 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
         const user = await userService.register(parsed.data);
 
         // Generate tokens
-        const accessToken = tokenService.generateAccessToken(user.id, 'user', ['profile', 'email']);
+        const scopes = ['profile', 'email'];
+        const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
         const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
+
+        await tokenService.storeToken({
+            accessToken: accessToken.token,
+            refreshToken: refreshToken.token,
+            accessTokenExpiresAt: accessToken.expiresAt,
+            refreshTokenExpiresAt: refreshToken.expiresAt,
+            scopes,
+            userId: user.id,
+            clientId: await getSystemClientId(),
+        });
+
+        void auditService.log({
+            action: AUDIT_ACTIONS.REGISTER,
+            userId: user.id,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
 
         sendSuccess(res, {
             user,
@@ -382,19 +466,32 @@ router.get('/google', passport.authenticate('google', {
  */
 router.get('/google/callback',
     passport.authenticate('google', { session: false, failureRedirect: '/auth/login' }),
-    async (req: Request, res: Response) => {
-        const user = req.user as { id: string };
+    async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user as { id: string };
+            const scopes = ['profile', 'email'];
+            const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
+            const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
 
-        const accessToken = tokenService.generateAccessToken(user.id, 'user', ['profile', 'email']);
-        const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
+            await tokenService.storeToken({
+                accessToken: accessToken.token,
+                refreshToken: refreshToken.token,
+                accessTokenExpiresAt: accessToken.expiresAt,
+                refreshTokenExpiresAt: refreshToken.expiresAt,
+                scopes,
+                userId: user.id,
+                clientId: await getSystemClientId(),
+            });
 
-        // Redirect to frontend with tokens
-        const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:3000';
-        const redirectUrl = new URL('/auth/callback', frontendUrl);
-        redirectUrl.searchParams.set('access_token', accessToken.token);
-        redirectUrl.searchParams.set('refresh_token', refreshToken.token);
+            const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:3000';
+            const redirectUrl = new URL('/auth/callback', frontendUrl);
+            redirectUrl.searchParams.set('access_token', accessToken.token);
+            redirectUrl.searchParams.set('refresh_token', refreshToken.token);
 
-        res.redirect(redirectUrl.toString());
+            res.redirect(redirectUrl.toString());
+        } catch (error) {
+            next(error);
+        }
     }
 );
 
@@ -429,18 +526,32 @@ router.get('/facebook', passport.authenticate('facebook', {
  */
 router.get('/facebook/callback',
     passport.authenticate('facebook', { session: false, failureRedirect: '/auth/login' }),
-    async (req: Request, res: Response) => {
-        const user = req.user as { id: string };
+    async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = req.user as { id: string };
+            const scopes = ['profile', 'email'];
+            const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
+            const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
 
-        const accessToken = tokenService.generateAccessToken(user.id, 'user', ['profile', 'email']);
-        const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
+            await tokenService.storeToken({
+                accessToken: accessToken.token,
+                refreshToken: refreshToken.token,
+                accessTokenExpiresAt: accessToken.expiresAt,
+                refreshTokenExpiresAt: refreshToken.expiresAt,
+                scopes,
+                userId: user.id,
+                clientId: await getSystemClientId(),
+            });
 
-        const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:3000';
-        const redirectUrl = new URL('/auth/callback', frontendUrl);
-        redirectUrl.searchParams.set('access_token', accessToken.token);
-        redirectUrl.searchParams.set('refresh_token', refreshToken.token);
+            const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:3000';
+            const redirectUrl = new URL('/auth/callback', frontendUrl);
+            redirectUrl.searchParams.set('access_token', accessToken.token);
+            redirectUrl.searchParams.set('refresh_token', refreshToken.token);
 
-        res.redirect(redirectUrl.toString());
+            res.redirect(redirectUrl.toString());
+        } catch (error) {
+            next(error);
+        }
     }
 );
 
@@ -470,7 +581,19 @@ router.get('/facebook/callback',
  */
 router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const userId = req.headers['x-user-id'] as string;
+        // x-user-id is set by the API gateway in production
+        // Fall back to Bearer token verification for direct / local-dev access
+        let userId = req.headers['x-user-id'] as string | undefined;
+
+        if (!userId) {
+            const authHeader = req.headers['authorization'];
+            if (authHeader?.startsWith('Bearer ')) {
+                const payload = tokenService.verifyToken(authHeader.slice(7));
+                if (payload?.sub) {
+                    userId = payload.sub;
+                }
+            }
+        }
 
         if (!userId) {
             throw new ValidationError('Not authenticated');

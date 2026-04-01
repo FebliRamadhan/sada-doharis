@@ -183,7 +183,9 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
  */
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const client = await clientService.findById(req.params['id'] as string);
+        // Try lookup by OAuth clientId first (used by auth-ui), fall back to internal id
+        const id = req.params['id'] as string;
+        const client = (await clientService.findByClientId(id)) ?? (await clientService.findById(id));
         sendSuccess(res, client);
     } catch (error) {
         next(error);

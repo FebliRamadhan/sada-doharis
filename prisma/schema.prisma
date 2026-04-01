@@ -92,6 +92,7 @@ model OAuthAuthorizationCode {
   expiresAt           DateTime
   codeChallenge       String?  // For PKCE
   codeChallengeMethod String?  // S256 or plain
+  nonce               String?  // OIDC nonce for replay protection
 
   userId   String
   user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -103,4 +104,22 @@ model OAuthAuthorizationCode {
   @@index([code])
   @@index([userId])
   @@index([clientId])
+}
+
+// ==============================================
+// Audit Log Model
+// ==============================================
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // LOGIN, LOGOUT, LOGIN_FAILED, TOKEN_ISSUED, TOKEN_REVOKED, CLIENT_CREATED, etc.
+  userId    String?
+  clientId  String?
+  ip        String?
+  userAgent String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }

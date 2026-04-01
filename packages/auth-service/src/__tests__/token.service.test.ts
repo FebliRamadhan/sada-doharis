@@ -23,6 +23,14 @@ vi.mock('crypto', () => ({
     },
 }));
 
+// Mock RSA keys so tests don't need to generate a real key pair
+vi.mock('../config/keys.js', () => ({
+    getPrivateKey: vi.fn(() => 'mock-private-key'),
+    getPublicKey: vi.fn(() => 'mock-public-key'),
+    getKeyId: vi.fn(() => 'test-kid'),
+    getJWKS: vi.fn(() => ({ keys: [] })),
+}));
+
 // Mock database
 vi.mock('../config/database.js', () => ({
     prisma: {

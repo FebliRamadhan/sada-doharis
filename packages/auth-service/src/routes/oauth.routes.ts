@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { oauthService } from '../services/oauth.service.js';
+import { tokenService } from '../services/token.service.js';
 import { sendSuccess, sendError, ValidationError, ErrorCodes } from '@sada/shared';
 
 const router = Router();
@@ -13,6 +14,7 @@ const authorizeSchema = z.object({
     redirect_uri: z.string().url(),
     scope: z.string().optional(),
     state: z.string().optional(),
+    nonce: z.string().optional(),
     code_challenge: z.string().optional(),
     code_challenge_method: z.enum(['plain', 'S256']).optional(),
 });
@@ -102,14 +104,22 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
             throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
         }
 
-        const { client_id, redirect_uri, scope, state, code_challenge, code_challenge_method } = parsed.data;
+        const { client_id, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method } = parsed.data;
 
-        // For now, we require the user to be authenticated via /auth/login first
-        // In a real app, you'd show a login/consent form here
-        const userId = req.headers['x-user-id'] as string;
+        // Resolve user identity: from gateway header OR Bearer token (direct UI access)
+        let userId = req.headers['x-user-id'] as string;
 
         if (!userId) {
-            // Redirect to login with return URL
+            const authHeader = req.headers['authorization'];
+            if (authHeader?.startsWith('Bearer ')) {
+                const token = authHeader.slice(7);
+                const payload = tokenService.verifyToken(token);
+                if (payload?.sub) userId = payload.sub;
+            }
+        }
+
+        if (!userId) {
+            // Browser navigation without token — redirect to UI login
             const returnUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
             return res.redirect(`/auth/login?return_url=${encodeURIComponent(returnUrl)}`);
         }
@@ -119,15 +129,21 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
             userId,
             redirectUri: redirect_uri,
             scopes: scope?.split(' ') ?? [],
+            nonce,
             codeChallenge: code_challenge,
             codeChallengeMethod: code_challenge_method,
         });
 
-        // Redirect back to client with code
+        // Build callback URL with authorization code
         const redirectUrl = new URL(redirect_uri);
         redirectUrl.searchParams.set('code', result.code);
         if (state) {
             redirectUrl.searchParams.set('state', state);
+        }
+
+        // If called via API (with Authorization header) — return JSON so client can navigate
+        if (req.headers['authorization']) {
+            return sendSuccess(res, { redirect_url: redirectUrl.toString() });
         }
 
         res.redirect(redirectUrl.toString());
@@ -368,11 +384,19 @@ router.get('/.well-known/openid-configuration', (req: Request, res: Response) =>
         issuer: baseUrl,
         authorization_endpoint: `${baseUrl}/oauth/authorize`,
         token_endpoint: `${baseUrl}/oauth/token`,
+        userinfo_endpoint: `${baseUrl}/oauth/userinfo`,
+        jwks_uri: `${baseUrl}/.well-known/jwks.json`,
         revocation_endpoint: `${baseUrl}/oauth/revoke`,
+        introspection_endpoint: `${baseUrl}/oauth/introspect`,
+        end_session_endpoint: `${baseUrl}/oauth/logout`,
         grant_types_supported: ['authorization_code', 'client_credentials', 'refresh_token'],
         response_types_supported: ['code'],
-        token_endpoint_auth_methods_supported: ['client_secret_post'],
+        subject_types_supported: ['public'],
+        id_token_signing_alg_values_supported: ['RS256'],
+        scopes_supported: ['openid', 'profile', 'email', 'offline_access', 'internal', 'government'],
+        token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic'],
         code_challenge_methods_supported: ['plain', 'S256'],
+        claims_supported: ['sub', 'iss', 'aud', 'exp', 'iat', 'nonce', 'name', 'email', 'email_verified', 'preferred_username'],
     });
 });
 

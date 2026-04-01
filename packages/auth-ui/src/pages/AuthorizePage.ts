@@ -29,34 +29,41 @@ export async function AuthorizePage(): Promise<void> {
     // Initial loading state
     app.innerHTML = `
         <div class="auth-card">
-            <div class="brand">
-                <div class="brand-logo">S</div>
-                <h1>Authorize</h1>
-                <p id="auth-description">An application wants to access your account</p>
+            <!-- Mobile header -->
+            <div class="mobile-brand-header" aria-hidden="true">
+                <img src="/logo-panrb.png"
+                     alt="Logo Kementerian PANRB"
+                     height="44" style="width:auto;">
             </div>
+
+            <div class="form-header">
+                <h1>Izinkan Akses</h1>
+                <p id="auth-description">Sebuah aplikasi ingin mengakses akun Anda</p>
+            </div>
+
             <div id="loading-state" class="loading-state">
-                <div class="spinner spinner-lg"></div>
-                <p>Loading authorization details...</p>
+                <div class="spinner spinner-dark spinner-lg"></div>
+                <p>Memuat detail otorisasi...</p>
             </div>
             <div id="auth-content" style="display: none;"></div>
-            <div id="error-state" class="loading-state" style="display: none;">
+            <div id="error-state" class="loading-state" style="display: none;" role="alert">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-error)"
-                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <circle cx="12" cy="12" r="10" />
                     <line x1="12" y1="8" x2="12" y2="12" />
                     <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
-                <p id="error-message">Something went wrong</p>
+                <p id="error-message">Terjadi kesalahan</p>
                 <a href="/login" class="btn btn-secondary" style="width: auto; margin-top: var(--space-4);">
-                    Back to Login
+                    Kembali ke Login
                 </a>
             </div>
-            <div class="security-badge">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round">
+            <div class="security-badge" role="note">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
-                <span>Your data is protected</span>
+                <span>Data Anda dilindungi — Portal resmi KemenPANRB</span>
             </div>
         </div>
     `;
@@ -146,7 +153,7 @@ function renderAuthContent(user: User, client: OAuthClient, oauthParams: OAuthPa
                 <h4>${user.name}</h4>
                 <p>${user.email}</p>
             </div>
-            <a href="/login" class="switch-link">Switch</a>
+            <a href="/login" class="switch-link">Ganti</a>
         </div>
 
         <!-- Application Info -->
@@ -159,8 +166,8 @@ function renderAuthContent(user: User, client: OAuthClient, oauthParams: OAuthPa
         </div>
 
         <!-- Permissions -->
-        <p style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-bottom: var(--space-4);">
-            This application will be able to:
+        <p style="font-size: var(--font-sm); color: var(--color-text-secondary); margin-bottom: var(--space-4); font-weight: 600;">
+            Aplikasi ini akan dapat mengakses:
         </p>
 
         <ul class="scope-list">
@@ -169,12 +176,18 @@ function renderAuthContent(user: User, client: OAuthClient, oauthParams: OAuthPa
 
         <!-- Actions -->
         <div class="consent-actions">
-            <button type="button" class="btn btn-deny" id="btn-deny">Deny</button>
-            <button type="button" class="btn btn-allow" id="btn-allow">Allow</button>
+            <button type="button" class="btn btn-deny" id="btn-deny">Tolak</button>
+            <button type="button" class="btn btn-allow" id="btn-allow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                Izinkan
+            </button>
         </div>
 
         <div class="auth-footer">
-            <p>By clicking Allow, you authorize this application to access your data.</p>
+            <p>Dengan mengklik <strong>Izinkan</strong>, Anda memberi akses kepada aplikasi ini sesuai izin di atas.</p>
         </div>
     `;
 
@@ -201,27 +214,41 @@ async function handleAllow(oauthParams: OAuthParams): Promise<void> {
 
     if (btnAllow) {
         btnAllow.disabled = true;
-        btnAllow.innerHTML = '<div class="spinner"></div> Authorizing...';
+        btnAllow.innerHTML = '<div class="spinner"></div> Memproses...';
     }
     if (btnDeny) btnDeny.disabled = true;
 
     try {
-        const authorizeUrl = new URL(endpoints.authorize, window.location.origin);
-        authorizeUrl.searchParams.set('client_id', oauthParams.clientId);
-        authorizeUrl.searchParams.set('redirect_uri', oauthParams.redirectUri);
-        authorizeUrl.searchParams.set('scope', oauthParams.scope);
-        authorizeUrl.searchParams.set('response_type', oauthParams.responseType);
-        if (oauthParams.state) authorizeUrl.searchParams.set('state', oauthParams.state);
-        if (oauthParams.codeChallenge) authorizeUrl.searchParams.set('code_challenge', oauthParams.codeChallenge);
-        if (oauthParams.codeChallengeMethod) authorizeUrl.searchParams.set('code_challenge_method', oauthParams.codeChallengeMethod);
-        authorizeUrl.searchParams.set('consent', 'approved');
+        const params = new URLSearchParams({
+            response_type: oauthParams.responseType,
+            client_id: oauthParams.clientId,
+            redirect_uri: oauthParams.redirectUri,
+            scope: oauthParams.scope,
+        });
+        if (oauthParams.state) params.set('state', oauthParams.state);
+        if (oauthParams.codeChallenge) params.set('code_challenge', oauthParams.codeChallenge);
+        if (oauthParams.codeChallengeMethod) params.set('code_challenge_method', oauthParams.codeChallengeMethod);
 
-        window.location.href = authorizeUrl.toString();
+        // Use apiRequest so Bearer token is included — server returns JSON { redirect_url }
+        const result = await apiRequest<{ redirect_url: string }>(
+            `${endpoints.authorize}?${params.toString()}`
+        );
+
+        if (result.success && result.data?.redirect_url) {
+            window.location.href = result.data.redirect_url;
+        } else {
+            throw new Error(result.error || 'Otorisasi gagal');
+        }
     } catch {
-        showError('Failed to authorize. Please try again.');
+        showError('Gagal memproses otorisasi. Silakan coba kembali.');
         if (btnAllow) {
             btnAllow.disabled = false;
-            btnAllow.innerHTML = 'Allow Access';
+            btnAllow.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                Izinkan`;
         }
         if (btnDeny) btnDeny.disabled = false;
     }
@@ -230,7 +257,7 @@ async function handleAllow(oauthParams: OAuthParams): Promise<void> {
 async function init(): Promise<void> {
     const oauthParams = getOAuthParams();
     if (!oauthParams) {
-        showError('Invalid authorization request. Missing required parameters.');
+        showError('Permintaan otorisasi tidak valid. Parameter yang diperlukan tidak ditemukan.');
         return;
     }
 
@@ -259,7 +286,7 @@ async function init(): Promise<void> {
         );
 
         if (!clientResult.success || !clientResult.data) {
-            showError('Unknown application. The application requesting access is not registered.');
+            showError('Aplikasi tidak dikenal. Aplikasi yang meminta akses belum terdaftar.');
             return;
         }
 
@@ -270,12 +297,12 @@ async function init(): Promise<void> {
         );
 
         if (!isValidRedirect) {
-            showError('Invalid redirect URI. This application is not authorized to use this redirect URI.');
+            showError('Redirect URI tidak valid. Aplikasi ini tidak memiliki izin untuk alamat pengalihan tersebut.');
             return;
         }
 
         renderAuthContent(user, client, oauthParams);
     } catch {
-        showError('Failed to load authorization details. Please try again.');
+        showError('Gagal memuat detail otorisasi. Silakan coba kembali.');
     }
 }

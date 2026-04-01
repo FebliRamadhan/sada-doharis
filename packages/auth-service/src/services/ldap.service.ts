@@ -26,7 +26,6 @@ export const ldapService = {
                 reject(new UnauthorizedError('LDAP connection failed'));
             });
 
-            // First, bind with service account to search for user
             client.bind(LDAP_BIND_DN, LDAP_BIND_PASSWORD, (bindErr) => {
                 if (bindErr) {
                     logger.error('LDAP bind error', { error: bindErr.message });
@@ -35,7 +34,6 @@ export const ldapService = {
                     return;
                 }
 
-                // Search for user
                 const searchFilter = LDAP_SEARCH_FILTER.replace('{{username}}', username);
                 const searchOptions: ldap.SearchOptions = {
                     filter: searchFilter,
@@ -52,57 +50,74 @@ export const ldapService = {
                     }
 
                     let userEntry: ldap.SearchEntry | null = null;
+                    let settled = false;
+
+                    // Zimbra may send referral errors AFTER delivering the entry.
+                    // Use settled flag so only the first resolution wins.
+                    const settle = (fn: () => void) => {
+                        if (settled) return;
+                        settled = true;
+                        fn();
+                    };
 
                     res.on('searchEntry', (entry) => {
                         userEntry = entry;
                     });
 
                     res.on('error', (err) => {
-                        logger.error('LDAP search result error', { error: err.message });
-                        client.destroy();
-                        reject(new UnauthorizedError('User not found'));
+                        if (userEntry) {
+                            // Entry already found — treat referral/size-limit errors as non-fatal
+                            logger.warn('LDAP referral/error ignored (entry already found)', { error: err.message });
+                            bindUser();
+                        } else {
+                            logger.error('LDAP search result error', { error: err.message });
+                            settle(() => { client.destroy(); reject(new UnauthorizedError('User not found')); });
+                        }
                     });
 
                     res.on('end', () => {
                         if (!userEntry) {
-                            client.destroy();
-                            reject(new UnauthorizedError('User not found'));
+                            settle(() => { client.destroy(); reject(new UnauthorizedError('User not found')); });
                             return;
                         }
+                        bindUser();
+                    });
 
+                    const bindUser = () => {
+                        if (!userEntry) return;
                         const userDn = userEntry.dn.toString();
 
-                        // Authenticate user with their password
-                        client.bind(userDn, password, (authErr) => {
-                            client.destroy();
+                        settle(() => {
+                            client.bind(userDn, password, (authErr) => {
+                                client.destroy();
 
-                            if (authErr) {
-                                logger.warn('LDAP authentication failed', { username });
-                                reject(new UnauthorizedError('Invalid credentials'));
-                                return;
-                            }
+                                if (authErr) {
+                                    logger.warn('LDAP authentication failed', { username });
+                                    reject(new UnauthorizedError('Invalid credentials'));
+                                    return;
+                                }
 
-                            // Extract user attributes
-                            const getAttribute = (name: string): string | undefined => {
-                                const entry = userEntry as unknown as { object?: Record<string, unknown> };
-                                const attr = entry.object?.[name];
-                                if (Array.isArray(attr)) return String(attr[0]);
-                                return attr ? String(attr) : undefined;
-                            };
+                                const getAttribute = (name: string): string | undefined => {
+                                    const e = userEntry as unknown as { object?: Record<string, unknown> };
+                                    const attr = e.object?.[name];
+                                    if (Array.isArray(attr)) return String(attr[0]);
+                                    return attr ? String(attr) : undefined;
+                                };
 
-                            const ldapUser: LdapUser = {
-                                dn: userDn,
-                                uid: getAttribute('uid') ?? username,
-                                cn: getAttribute('cn') ?? username,
-                                mail: getAttribute('mail') ?? '',
-                                department: getAttribute('department'),
-                                title: getAttribute('title'),
-                            };
+                                const ldapUser: LdapUser = {
+                                    dn: userDn,
+                                    uid: getAttribute('uid') ?? username,
+                                    cn: getAttribute('cn') ?? username,
+                                    mail: getAttribute('mail') ?? '',
+                                    department: getAttribute('department'),
+                                    title: getAttribute('title'),
+                                };
 
-                            logger.info('LDAP authentication successful', { username });
-                            resolve(ldapUser);
+                                logger.info('LDAP authentication successful', { username });
+                                resolve(ldapUser);
+                            });
                         });
-                    });
+                    };
                 });
             });
         });

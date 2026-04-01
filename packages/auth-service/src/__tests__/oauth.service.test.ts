@@ -28,10 +28,14 @@ vi.mock('../config/database.js', () => ({
         oAuthClient: {
             findUnique: vi.fn(() => ({
                 id: 'client-123',
+                clientId: 'client-123',
                 secret: 'hashed-secret',
+                isActive: true,
+                redirectUris: ['https://app.test/callback'],
                 scopes: ['openid', 'profile', 'email'],
                 grants: ['authorization_code', 'client_credentials', 'refresh_token'],
             })),
+            upsert: vi.fn(),
         },
         oAuthToken: {
             findFirst: vi.fn(() => ({
@@ -45,6 +49,30 @@ vi.mock('../config/database.js', () => ({
             delete: vi.fn(),
         },
     },
+}));
+
+vi.mock('../services/client.service.js', () => ({
+    clientService: {
+        validateCredentials: vi.fn(() => ({
+            id: 'client-123',
+            clientId: 'client-123',
+            isActive: true,
+            redirectUris: ['https://app.test/callback'],
+            scopes: ['openid', 'profile', 'email'],
+            grants: ['authorization_code', 'client_credentials', 'refresh_token'],
+        })),
+    },
+}));
+
+vi.mock('../services/audit.service.js', () => ({
+    auditService: { log: vi.fn() },
+    AUDIT_ACTIONS: { TOKEN_REVOKED: 'TOKEN_REVOKED' },
+}));
+
+vi.mock('../config/redis.js', () => ({
+    getRedis: vi.fn(() => ({
+        setex: vi.fn(),
+    })),
 }));
 
 vi.mock('./token.service.js', () => ({
