@@ -45,7 +45,7 @@ export async function LoginPage(): Promise<void> {
                         role="tab" aria-selected="true" aria-controls="tab-email">
                     Email / Kata Sandi
                 </button>
-                <button class="tab-btn" data-tab="sso" type="button"
+                <button class="tab-btn" data-tab="sso" type="button" style="display: none;"
                         role="tab" aria-selected="false" aria-controls="tab-sso">
                     SSO Instansi
                 </button>
@@ -98,7 +98,7 @@ export async function LoginPage(): Promise<void> {
             <div id="tab-sso" class="tab-content" role="tabpanel">
                 <div class="providers">
                     <!-- SPLP — Government ASN SSO -->
-                    <a href="/api/auth/splp/authorize" class="btn-provider"
+                    <a href="/api/auth/splp/authorize" class="btn-provider" style="display: none;"
                        aria-label="Login dengan SPLP, portal SSO Aparatur Sipil Negara">
                         <span class="icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" fill="none" stroke="#002B5B" stroke-width="2"
@@ -112,7 +112,7 @@ export async function LoginPage(): Promise<void> {
                     </a>
 
                     <!-- Google -->
-                    <a href="/api/auth/google" class="btn-provider"
+                    <a href="/api/auth/google" class="btn-provider" style="display: none;"
                        aria-label="Login dengan akun Google">
                         <span class="icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24">
