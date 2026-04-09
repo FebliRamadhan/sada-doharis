@@ -8,10 +8,10 @@ version: '3.8'
 #   DOMAIN_URL=https://auth.menpan.go.id
 #   JWT_SECRET=<random-min-64-char>
 #
-# Generate RSA keys sebelum deploy pertama:
+# RSA keys di-generate otomatis saat container pertama kali jalan
+# dan disimpan ke ./keys/ (persisten antar restart).
+# Cukup pastikan direktori ada:
 #   mkdir -p keys
-#   openssl genrsa -out keys/private.pem 2048
-#   openssl rsa -in keys/private.pem -pubout -out keys/public.pem
 #
 # Jalankan:
 #   docker compose -f docker-compose.single-domain.yml --env-file .env up -d
@@ -135,7 +135,7 @@ services:
       - TOKEN_CLEANUP_INTERVAL_MS=${TOKEN_CLEANUP_INTERVAL_MS:-3600000}
 
     volumes:
-      - ./keys:/app/keys:ro
+      - ./keys:/app/keys:rw
     depends_on:
       postgres:
         condition: service_healthy
