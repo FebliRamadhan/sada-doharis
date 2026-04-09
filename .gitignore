@@ -45,6 +45,9 @@ coverage/
 # Docker volumes
 .docker/
 
+# RSA keys (jangan di-commit)
+keys/
+
 # Temporary files
 tmp/
 temp/

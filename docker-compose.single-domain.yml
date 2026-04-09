@@ -3,11 +3,18 @@ version: '3.8'
 # =============================================================================
 # SADA SSO — Single Domain Stack
 #
-# Semua service berjalan di belakang 1 Nginx (port 80 / 443).
-# Set domain di .env → DOMAIN=sso.panrb.go.id
+# Semua service di belakang 1 Nginx (port 80, SSL terminate di LB).
+# Wajib set di .env:
+#   DOMAIN_URL=https://auth.menpan.go.id
+#   JWT_SECRET=<random-min-64-char>
+#
+# Generate RSA keys sebelum deploy pertama:
+#   mkdir -p keys
+#   openssl genrsa -out keys/private.pem 2048
+#   openssl rsa -in keys/private.pem -pubout -out keys/public.pem
 #
 # Jalankan:
-#   docker compose -f docker-compose.single-domain.yml up -d
+#   docker compose -f docker-compose.single-domain.yml --env-file .env up -d
 # =============================================================================
 
 services:
@@ -17,13 +24,13 @@ services:
     container_name: sada-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER:     postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB:       sada_db
+      POSTGRES_USER:     ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB:       ${POSTGRES_DB:-sada_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test:     ["CMD-SHELL", "pg_isready -U postgres"]
+      test:     ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout:  5s
       retries:  5
@@ -53,14 +60,36 @@ services:
     container_name: sada-auth-service
     restart: unless-stopped
     environment:
+      # App
       - NODE_ENV=production
       - AUTH_SERVICE_PORT=3001
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/sada_db?schema=public
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+      # Database
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sada_db}?schema=public
+
+      # Redis
       - REDIS_URL=redis://redis:6379
-      # OIDC_ISSUER harus URL publik domain Anda
-      - OIDC_ISSUER=${DOMAIN_URL:-http://localhost}
-      - CORS_ORIGIN=${DOMAIN_URL:-http://localhost}
+
+      # OIDC & CORS — otomatis dari DOMAIN_URL
+      - OIDC_ISSUER=${DOMAIN_URL:?DOMAIN_URL wajib diisi di .env}
+      - CORS_ORIGIN=${DOMAIN_URL}
+
+      # JWT
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET wajib diisi di .env}
+      - JWT_ACCESS_TOKEN_EXPIRES_IN=${JWT_ACCESS_TOKEN_EXPIRES_IN:-15m}
+      - JWT_REFRESH_TOKEN_EXPIRES_IN=${JWT_REFRESH_TOKEN_EXPIRES_IN:-7d}
+
+      # OAuth2 timeouts
+      - OAUTH_AUTHORIZATION_CODE_EXPIRES_IN=${OAUTH_AUTHORIZATION_CODE_EXPIRES_IN:-600}
+      - OAUTH_ACCESS_TOKEN_EXPIRES_IN=${OAUTH_ACCESS_TOKEN_EXPIRES_IN:-3600}
+      - OAUTH_REFRESH_TOKEN_EXPIRES_IN=${OAUTH_REFRESH_TOKEN_EXPIRES_IN:-2592000}
+
+      # RSA Keys (di-mount dari ./keys/)
+      - RSA_PRIVATE_KEY_PATH=/app/keys/private.pem
+      - RSA_PUBLIC_KEY_PATH=/app/keys/public.pem
+      - RSA_KEY_ID=${RSA_KEY_ID:-key-1}
+
       # LDAP
       - LDAP_URL=${LDAP_URL:-}
       - LDAP_BIND_DN=${LDAP_BIND_DN:-}
@@ -68,27 +97,45 @@ services:
       - LDAP_SEARCH_BASE=${LDAP_SEARCH_BASE:-}
       - LDAP_SEARCH_FILTER=${LDAP_SEARCH_FILTER:-}
       - INTERNAL_EMAIL_DOMAIN=${INTERNAL_EMAIL_DOMAIN:-menpan.go.id}
-      # MySQL
+
+      # MySQL (profil pegawai)
       - MYSQL_HOST=${MYSQL_HOST:-}
       - MYSQL_PORT=${MYSQL_PORT:-3306}
       - MYSQL_USER=${MYSQL_USER:-}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-main_db}
-      # SPLP
+
+      # SPLP (Government SSO)
       - SPLP_CLIENT_ID=${SPLP_CLIENT_ID:-}
       - SPLP_CLIENT_SECRET=${SPLP_CLIENT_SECRET:-}
       - SPLP_AUTHORIZATION_URL=${SPLP_AUTHORIZATION_URL:-}
       - SPLP_TOKEN_URL=${SPLP_TOKEN_URL:-}
       - SPLP_USERINFO_URL=${SPLP_USERINFO_URL:-}
       - SPLP_REDIRECT_URI=${SPLP_REDIRECT_URI:-}
+
       # Google OAuth
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      - GOOGLE_CALLBACK_URL=${DOMAIN_URL:-http://localhost}/api/auth/google/callback
+      - GOOGLE_CALLBACK_URL=${DOMAIN_URL}/api/auth/google/callback
+
       # Facebook OAuth
       - FACEBOOK_APP_ID=${FACEBOOK_APP_ID:-}
       - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET:-}
-      - FACEBOOK_CALLBACK_URL=${DOMAIN_URL:-http://localhost}/api/auth/facebook/callback
+      - FACEBOOK_CALLBACK_URL=${DOMAIN_URL}/api/auth/facebook/callback
+
+      # Rate limiting
+      - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-60000}
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-100}
+      - AUTH_RATE_LIMIT_WINDOW_MS=${AUTH_RATE_LIMIT_WINDOW_MS:-60000}
+      - AUTH_RATE_LIMIT_MAX_REQUESTS=${AUTH_RATE_LIMIT_MAX_REQUESTS:-5}
+      - TOKEN_RATE_LIMIT_MAX_REQUESTS=${TOKEN_RATE_LIMIT_MAX_REQUESTS:-10}
+
+      # Misc
+      - AUDIT_LOG_ENABLED=${AUDIT_LOG_ENABLED:-true}
+      - TOKEN_CLEANUP_INTERVAL_MS=${TOKEN_CLEANUP_INTERVAL_MS:-3600000}
+
+    volumes:
+      - ./keys:/app/keys:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,7 +146,6 @@ services:
       interval: 30s
       timeout:  10s
       retries:  3
-    # Port TIDAK di-expose ke host — hanya diakses lewat Nginx
     expose:
       - "3001"
     networks:
@@ -112,15 +158,10 @@ services:
       dockerfile: docker/Dockerfile.auth-ui
     container_name: sada-nginx
     restart: unless-stopped
-    # Override nginx config dengan versi single-domain
     volumes:
       - ./docker/nginx.single-domain.conf:/etc/nginx/conf.d/default.conf:ro
-      # Uncomment untuk HTTPS:
-      # - ./ssl/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
-      # - ./ssl/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
     ports:
       - "80:80"
-      # - "443:443"   # Uncomment untuk HTTPS
     depends_on:
       auth-service:
         condition: service_healthy
@@ -134,4 +175,3 @@ volumes:
 networks:
   sada-internal:
     driver: bridge
-    # Tidak di-expose ke luar — hanya komunikasi antar container
