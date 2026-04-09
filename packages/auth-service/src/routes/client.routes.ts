@@ -145,7 +145,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const page = parseInt(req.query['page'] as string) || 1;
-        const limit = parseInt(req.query['limit'] as string) || 10;
+        const limit = Math.min(parseInt(req.query['limit'] as string) || 10, 100);
 
         const result = await clientService.list(page, limit);
         sendPaginated(res, result.data, result.meta.page, result.meta.limit, result.meta.total);

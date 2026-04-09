@@ -28,7 +28,7 @@ const PORT = process.env['AUTH_SERVICE_PORT'] ?? 3001;
 // Security middlewares
 app.use(helmet());
 app.use(cors({
-    origin: process.env['CORS_ORIGIN']?.split(',') ?? '*',
+    origin: process.env['CORS_ORIGIN']?.split(',') ?? ['http://localhost:3000', 'http://localhost:3002'],
     credentials: true,
 }));
 

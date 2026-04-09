@@ -2,7 +2,8 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { userService } from '../services/user.service.js';
-import { sendSuccess, ValidationError } from '@sada/shared';
+import { tokenService } from '../services/token.service.js';
+import { sendSuccess, ValidationError, UnauthorizedError, ForbiddenError } from '@sada/shared';
 
 const router = Router();
 
@@ -104,13 +105,28 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
  */
 router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const parsed = updateUserSchema.safeParse(req.body);
+        const targetId = req.params['id'] as string;
+        const authHeader = req.headers['authorization'];
+        if (!authHeader?.startsWith('Bearer ')) {
+            throw new UnauthorizedError('Authentication required');
+        }
+        let requesterId: string;
+        try {
+            const payload = tokenService.verifyToken(authHeader.slice(7));
+            requesterId = payload.sub;
+        } catch {
+            throw new UnauthorizedError('Invalid token');
+        }
+        if (requesterId !== targetId) {
+            throw new ForbiddenError('Cannot modify another user');
+        }
 
+        const parsed = updateUserSchema.safeParse(req.body);
         if (!parsed.success) {
             throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
         }
 
-        const user = await userService.update(req.params['id'] as string, parsed.data);
+        const user = await userService.update(targetId, parsed.data);
         sendSuccess(res, user);
     } catch (error) {
         next(error);
@@ -154,7 +170,23 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
  */
 router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        await userService.deactivate(req.params['id'] as string);
+        const targetId = req.params['id'] as string;
+        const authHeader = req.headers['authorization'];
+        if (!authHeader?.startsWith('Bearer ')) {
+            throw new UnauthorizedError('Authentication required');
+        }
+        let requesterId: string;
+        try {
+            const payload = tokenService.verifyToken(authHeader.slice(7));
+            requesterId = payload.sub;
+        } catch {
+            throw new UnauthorizedError('Invalid token');
+        }
+        if (requesterId !== targetId) {
+            throw new ForbiddenError('Cannot deactivate another user');
+        }
+
+        await userService.deactivate(targetId);
         sendSuccess(res, { deactivated: true });
     } catch (error) {
         next(error);

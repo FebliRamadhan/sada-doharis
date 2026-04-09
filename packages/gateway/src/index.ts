@@ -24,7 +24,7 @@ const PORT = process.env['PORT'] ?? 3000;
 // Security middlewares
 app.use(helmet());
 app.use(cors({
-    origin: process.env['CORS_ORIGIN']?.split(',') ?? '*',
+    origin: process.env['CORS_ORIGIN']?.split(',') ?? ['http://localhost:3002'],
     credentials: true,
 }));
 
@@ -62,6 +62,25 @@ const authRateLimiter = rateLimit({
 app.use('/auth/login', authRateLimiter);
 app.use('/auth/ldap/login', authRateLimiter);
 app.use('/auth/register', authRateLimiter);
+
+// Strict rate limiter for OAuth token endpoint (brute force / code enumeration)
+const tokenRateLimiter = rateLimit({
+    windowMs: 60000,
+    max: parseInt(process.env['TOKEN_RATE_LIMIT_MAX_REQUESTS'] ?? '10', 10),
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        success: false,
+        error: {
+            code: 'RATE_LIMIT_EXCEEDED',
+            message: 'Too many token requests, please try again later.',
+        },
+    },
+    keyGenerator: (req) =>
+        req.headers['x-forwarded-for'] as string ?? req.socket.remoteAddress ?? 'unknown',
+});
+app.use('/api/oauth/token', tokenRateLimiter);
+app.use('/api/oauth/revoke', tokenRateLimiter);
 
 // Routes
 app.use('/health', healthRoutes);

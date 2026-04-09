@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { prisma } from '../config/database.js';
 import { tokenService } from '../services/token.service.js';
 import { clientService } from '../services/client.service.js';
-import { getJWKS } from '../config/keys.js';
+import { getJWKS, getPublicKey } from '../config/keys.js';
 import { getRedis } from '../config/redis.js';
 import {
     sendSuccess,
@@ -226,17 +227,16 @@ router.get('/logout', async (req: Request, res: Response, next: NextFunction) =>
 
         let userId: string | undefined;
 
-        // Extract user from id_token_hint (decode without verify — user is logging out)
+        // Extract user from id_token_hint — verify signature (ignoring expiry, as logout may use old tokens)
         if (id_token_hint) {
             try {
-                const parts = id_token_hint.split('.');
-                if (parts.length === 3) {
-                    const payloadJson = Buffer.from(parts[1]!, 'base64url').toString('utf8');
-                    const tokenPayload = JSON.parse(payloadJson) as { sub?: string };
-                    userId = tokenPayload.sub;
-                }
+                const tokenPayload = jwt.verify(id_token_hint, getPublicKey(), {
+                    algorithms: ['RS256'],
+                    ignoreExpiration: true,
+                }) as { sub?: string };
+                userId = tokenPayload.sub;
             } catch {
-                // Ignore decode errors
+                // Invalid signature — ignore, proceed with logout without user context
             }
         }
 
