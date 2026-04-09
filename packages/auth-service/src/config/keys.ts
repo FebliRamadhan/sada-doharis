@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import fs from 'fs';
+import path from 'path';
 import { createLogger } from '@sada/shared';
 import type { JWK, JWKSResponse } from '@sada/shared';
 
@@ -28,22 +29,33 @@ function loadOrGenerateKeys(): KeyPair {
                 publicKey: crypto.createPublicKey(publicPem),
                 kid,
             };
-        } catch (err) {
-            if (process.env['NODE_ENV'] === 'production') {
-                throw new Error(`FATAL: Cannot load RSA keys from ${privatePath} / ${publicPath}: ${(err as Error).message}`);
-            }
-            logger.warn('RSA key files not found, auto-generating for dev', { privatePath });
+        } catch {
+            logger.warn('RSA keys not found, generating and saving to configured paths', { privatePath });
         }
     }
 
-    // Auto-generate for development
+    // Generate new key pair
     const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
         modulusLength: 2048,
         publicKeyEncoding: { type: 'spki', format: 'pem' },
         privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
     } as crypto.RSAKeyPairOptions<'pem', 'pem'>);
 
-    logger.warn('Auto-generated RSA key pair (development only — set RSA_PRIVATE_KEY_PATH for production)');
+    // Persist to disk if paths are configured (survives container restarts)
+    if (privatePath && publicPath) {
+        try {
+            fs.mkdirSync(path.dirname(privatePath), { recursive: true });
+            fs.writeFileSync(privatePath, privateKey as unknown as string, { mode: 0o600 });
+            fs.writeFileSync(publicPath, publicKey as unknown as string);
+            logger.info('RSA keys generated and saved', { privatePath, publicPath, kid });
+        } catch (writeErr) {
+            logger.error('Failed to save RSA keys — keys are ephemeral this session', {
+                error: (writeErr as Error).message,
+            });
+        }
+    } else {
+        logger.warn('RSA_PRIVATE_KEY_PATH not set — keys are ephemeral, set path for production');
+    }
 
     return {
         privateKey: crypto.createPrivateKey(privateKey as unknown as string),
