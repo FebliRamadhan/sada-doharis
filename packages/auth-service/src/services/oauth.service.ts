@@ -255,6 +255,10 @@ export const oauthService = {
             throw new InvalidGrantError('Invalid refresh token');
         }
 
+        if (storedToken.clientId !== client.id) {
+            throw new InvalidGrantError('Refresh token does not belong to this client');
+        }
+
         if (storedToken.refreshTokenExpiresAt && storedToken.refreshTokenExpiresAt < new Date()) {
             await prisma.oAuthToken.delete({ where: { id: storedToken.id } });
             throw new InvalidGrantError('Refresh token expired');

@@ -59,7 +59,15 @@ export const userService = {
      * For internal emails (@bpjstk.go.id), it authenticates via LDAP
      * and fetches profile from tb_master_pegawai
      */
-    async loginWithPassword(email: string, password: string) {
+    async loginWithPassword(emailOrUsername: string, password: string) {
+        // If no @ sign, treat as bare username → try LDAP directly
+        if (!emailOrUsername.includes('@') && ldapService.isConfigured()) {
+            logger.info('Username without domain detected, using LDAP auth', { username: emailOrUsername });
+            return this.loginWithLdap(emailOrUsername, password);
+        }
+
+        const email = emailOrUsername;
+
         // Check if this is an internal email - authenticate via LDAP
         if (pegawaiService.isInternalEmail(email) && ldapService.isConfigured()) {
             logger.info('Internal email detected, using LDAP auth', { email });

@@ -9,6 +9,16 @@ const LDAP_BIND_PASSWORD = process.env['LDAP_BIND_PASSWORD'] ?? '';
 const LDAP_SEARCH_BASE = process.env['LDAP_SEARCH_BASE'] ?? '';
 const LDAP_SEARCH_FILTER = process.env['LDAP_SEARCH_FILTER'] ?? '(uid={{username}})';
 
+/**
+ * Escape special characters per RFC 4515 to prevent LDAP injection.
+ * Characters: NUL, *, (, ), \
+ */
+function escapeLdapFilter(input: string): string {
+    return input.replace(/[\x00*\(\)\\]/g, (char) =>
+        `\\${char.charCodeAt(0).toString(16).padStart(2, '0')}`
+    );
+}
+
 export const ldapService = {
     /**
      * Authenticate user via LDAP
@@ -34,7 +44,7 @@ export const ldapService = {
                     return;
                 }
 
-                const searchFilter = LDAP_SEARCH_FILTER.replace('{{username}}', username);
+                const searchFilter = LDAP_SEARCH_FILTER.replace('{{username}}', escapeLdapFilter(username));
                 const searchOptions: ldap.SearchOptions = {
                     filter: searchFilter,
                     scope: 'sub',

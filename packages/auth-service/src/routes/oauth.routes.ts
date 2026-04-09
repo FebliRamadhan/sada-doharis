@@ -3,7 +3,22 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { oauthService } from '../services/oauth.service.js';
 import { tokenService } from '../services/token.service.js';
+import { prisma } from '../config/database.js';
+import { getRedis } from '../config/redis.js';
 import { sendSuccess, sendError, ValidationError, ErrorCodes } from '@sada/shared';
+
+// Consent TTL matches the refresh token session lifetime
+const CONSENT_TTL_SECONDS = (() => {
+    const raw = process.env['JWT_REFRESH_TOKEN_EXPIRES_IN'] ?? '7d';
+    const m = raw.match(/^(\d+)([smhd])$/);
+    if (!m) return 7 * 86400;
+    const v = parseInt(m[1]!, 10);
+    const unit = m[2];
+    if (unit === 's') return v;
+    if (unit === 'm') return v * 60;
+    if (unit === 'h') return v * 3600;
+    return v * 86400; // 'd'
+})();
 
 const router = Router();
 
@@ -17,6 +32,7 @@ const authorizeSchema = z.object({
     nonce: z.string().optional(),
     code_challenge: z.string().optional(),
     code_challenge_method: z.enum(['plain', 'S256']).optional(),
+    consent: z.literal('approved').optional(),
 });
 
 const tokenSchema = z.object({
@@ -104,7 +120,7 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
             throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
         }
 
-        const { client_id, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method } = parsed.data;
+        const { client_id, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, consent } = parsed.data;
 
         // Resolve user identity: from gateway header OR Bearer token (direct UI access)
         let userId = req.headers['x-user-id'] as string;
@@ -124,11 +140,35 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
             return res.redirect(`/auth/login?return_url=${encodeURIComponent(returnUrl)}`);
         }
 
+        const requestedScopes = scope?.split(' ') ?? [];
+
+        // Look up client (needed for consent key and generateAuthorizationCode validation)
+        const client = await prisma.oAuthClient.findUnique({ where: { clientId: client_id } });
+        if (!client || !client.isActive) {
+            throw new ValidationError('Invalid client');
+        }
+
+        // Session-scoped consent stored in Redis — expires with the session (refresh token TTL)
+        const redis = getRedis();
+        const consentKey = `consent:${userId}:${client.id}`;
+        const storedRaw = await redis.get(consentKey);
+        const storedScopes: string[] = storedRaw ? (JSON.parse(storedRaw) as string[]) : [];
+        const consentCoversScopes = requestedScopes.every(s => storedScopes.includes(s));
+
+        if (consent === 'approved') {
+            // Merge new scopes and refresh TTL
+            const merged = [...new Set([...storedScopes, ...requestedScopes])];
+            await redis.setex(consentKey, CONSENT_TTL_SECONDS, JSON.stringify(merged));
+        } else if (!consentCoversScopes) {
+            // No stored consent — tell frontend to show consent screen
+            return sendSuccess(res, { needs_consent: true });
+        }
+
         const result = await oauthService.generateAuthorizationCode({
             clientId: client_id,
             userId,
             redirectUri: redirect_uri,
-            scopes: scope?.split(' ') ?? [],
+            scopes: requestedScopes,
             nonce,
             codeChallenge: code_challenge,
             codeChallengeMethod: code_challenge_method,
@@ -141,12 +181,7 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
             redirectUrl.searchParams.set('state', state);
         }
 
-        // If called via API (with Authorization header) — return JSON so client can navigate
-        if (req.headers['authorization']) {
-            return sendSuccess(res, { redirect_url: redirectUrl.toString() });
-        }
-
-        res.redirect(redirectUrl.toString());
+        return sendSuccess(res, { redirect_url: redirectUrl.toString() });
     } catch (error) {
         next(error);
     }

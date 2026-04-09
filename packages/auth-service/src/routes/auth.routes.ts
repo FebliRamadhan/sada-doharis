@@ -30,7 +30,7 @@ async function getSystemClientId(): Promise<string> {
 
 // Validation schemas
 const loginSchema = z.object({
-    email: z.string().email(),
+    email: z.string().min(1), // accept email or username/NIP
     password: z.string().min(1),
 });
 

@@ -133,35 +133,32 @@ function handleDeny(oauthParams: OAuthParams): void {
     window.location.href = redirectUrl.toString();
 }
 
-// Handle allow - submit to backend
+// Build authorize API URL from OAuth params
+function buildAuthorizeUrl(oauthParams: OAuthParams, withConsent = false): string {
+    const url = new URL(endpoints.authorize, window.location.origin);
+    url.searchParams.set('client_id', oauthParams.clientId);
+    url.searchParams.set('redirect_uri', oauthParams.redirectUri);
+    url.searchParams.set('scope', oauthParams.scope);
+    url.searchParams.set('response_type', oauthParams.responseType);
+    if (oauthParams.state) url.searchParams.set('state', oauthParams.state);
+    if (oauthParams.codeChallenge) url.searchParams.set('code_challenge', oauthParams.codeChallenge);
+    if (oauthParams.codeChallengeMethod) url.searchParams.set('code_challenge_method', oauthParams.codeChallengeMethod);
+    if (withConsent) url.searchParams.set('consent', 'approved');
+    return url.pathname + url.search;
+}
+
+// Handle allow - submit to backend via fetch (preserves Authorization header)
 async function handleAllow(oauthParams: OAuthParams): Promise<void> {
     btnAllow.disabled = true;
     btnDeny.disabled = true;
     btnAllow.innerHTML = '<div class="spinner"></div> Authorizing...';
 
-    try {
-        // Build authorize URL with all params
-        const authorizeUrl = new URL(endpoints.authorize, window.location.origin);
-        authorizeUrl.searchParams.set('client_id', oauthParams.clientId);
-        authorizeUrl.searchParams.set('redirect_uri', oauthParams.redirectUri);
-        authorizeUrl.searchParams.set('scope', oauthParams.scope);
-        authorizeUrl.searchParams.set('response_type', oauthParams.responseType);
-        if (oauthParams.state) {
-            authorizeUrl.searchParams.set('state', oauthParams.state);
-        }
-        if (oauthParams.codeChallenge) {
-            authorizeUrl.searchParams.set('code_challenge', oauthParams.codeChallenge);
-        }
-        if (oauthParams.codeChallengeMethod) {
-            authorizeUrl.searchParams.set('code_challenge_method', oauthParams.codeChallengeMethod);
-        }
-        // Add consent approval
-        authorizeUrl.searchParams.set('consent', 'approved');
+    const result = await apiRequest<{ redirect_url?: string }>(buildAuthorizeUrl(oauthParams, true));
 
-        // Redirect to backend authorize endpoint
-        window.location.href = authorizeUrl.toString();
-    } catch {
-        showError('Failed to authorize. Please try again.');
+    if (result.success && result.data?.redirect_url) {
+        window.location.href = result.data.redirect_url;
+    } else {
+        showError(result.error || 'Failed to authorize. Please try again.');
         btnAllow.disabled = false;
         btnDeny.disabled = false;
         btnAllow.innerHTML = 'Allow Access';
@@ -202,7 +199,18 @@ async function init(): Promise<void> {
         const user = result.data?.user || storedUser;
         populateUserInfo(user);
 
-        // Fetch client info
+        // Check if consent already on record — skip consent screen if so
+        const consentCheck = await apiRequest<{ redirect_url?: string; needs_consent?: boolean }>(
+            buildAuthorizeUrl(oauthParams)
+        );
+
+        if (consentCheck.success && consentCheck.data?.redirect_url) {
+            // Consent already exists — navigate straight to client
+            window.location.href = consentCheck.data.redirect_url;
+            return;
+        }
+
+        // Fetch client info for consent screen
         const clientResult = await apiRequest<OAuthClient>(
             `${endpoints.clients}/${oauthParams.clientId}`
         );
