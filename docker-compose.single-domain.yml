@@ -59,6 +59,7 @@ services:
       - REDIS_URL=redis://redis:6379
       # OIDC_ISSUER harus URL publik domain Anda
       - OIDC_ISSUER=${DOMAIN_URL:-http://localhost}
+      - CORS_ORIGIN=${DOMAIN_URL:-http://localhost}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET wajib diisi di .env}
       # LDAP
       - LDAP_URL=${LDAP_URL:-}
