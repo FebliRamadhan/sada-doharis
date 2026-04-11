@@ -97,6 +97,7 @@ services:
       - LDAP_SEARCH_BASE=${LDAP_SEARCH_BASE:-}
       - LDAP_SEARCH_FILTER=${LDAP_SEARCH_FILTER:-}
       - INTERNAL_EMAIL_DOMAIN=${INTERNAL_EMAIL_DOMAIN:-menpan.go.id}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
 
       # MySQL (profil pegawai)
       - MYSQL_HOST=${MYSQL_HOST:-}
