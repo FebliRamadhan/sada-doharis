@@ -82,6 +82,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - OIDC_ISSUER=http://auth-service:3001
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-admin@menpan.go.id}
       # LDAP Configuration
       - LDAP_URL=${LDAP_URL:-}
       - LDAP_BIND_DN=${LDAP_BIND_DN:-}
@@ -127,19 +128,23 @@ services:
 
   # ===========================================
   # Auth UI (SSO Frontend)
+  # Nginx serves SPA static files + proxies /api/* to auth-service
   # ===========================================
   auth-ui:
     build:
       context: .
       dockerfile: docker/Dockerfile.auth-ui
     container_name: sada-auth-ui
-    environment:
-      - NODE_ENV=production
-      - API_URL=http://localhost:3001
     ports:
       - "3002:80"
     depends_on:
-      - auth-service
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     networks:
       - sada-network
 

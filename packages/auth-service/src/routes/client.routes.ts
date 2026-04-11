@@ -3,8 +3,21 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { clientService } from '../services/client.service.js';
 import { sendSuccess, sendPaginated, ValidationError } from '@sada/shared';
+import { prisma } from '../config/database.js';
+import { adminGuard } from '../middleware/adminGuard.js';
 
 const router = Router();
+
+// Public route — used by AuthorizePage to look up client info for OAuth consent
+// GET /:id is intentionally NOT protected by adminGuard
+
+// Admin-only routes
+router.post('/', adminGuard);
+router.get('/', adminGuard);
+router.patch('/:id', adminGuard);
+router.post('/:id/regenerate-secret', adminGuard);
+router.delete('/:id', adminGuard);
+router.get('/:id/logs', adminGuard);
 
 // Validation schemas
 const createClientSchema = z.object({
@@ -321,6 +334,35 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
     try {
         await clientService.delete(req.params['id'] as string);
         sendSuccess(res, { deleted: true });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /clients/:id/logs — Audit logs for a specific OAuth client
+ */
+router.get('/:id/logs', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params['id'] as string;
+        const page = parseInt(req.query['page'] as string) || 1;
+        const limit = Math.min(parseInt(req.query['limit'] as string) || 20, 100);
+        const skip = (page - 1) * limit;
+
+        // Resolve internal UUID from either clientId or id
+        const client = (await clientService.findByClientId(id)) ?? (await clientService.findById(id));
+
+        const [logs, total] = await Promise.all([
+            prisma.auditLog.findMany({
+                where: { clientId: client.id },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: limit,
+            }),
+            prisma.auditLog.count({ where: { clientId: client.id } }),
+        ]);
+
+        sendPaginated(res, logs, page, limit, total);
     } catch (error) {
         next(error);
     }

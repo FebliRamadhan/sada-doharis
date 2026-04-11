@@ -13,6 +13,7 @@ import { clientRoutes } from './routes/client.routes.js';
 import { userRoutes } from './routes/user.routes.js';
 import { healthRoutes } from './routes/health.routes.js';
 import { oidcRoutes } from './routes/oidc.routes.js';
+import { auditRoutes } from './routes/audit.routes.js';
 import { initPassport } from './config/passport.js';
 import { setupSwagger } from './swagger.js';
 import { prisma } from './config/database.js';
@@ -64,6 +65,7 @@ app.use('/oauth', oidcRoutes);   // /oauth/userinfo, /oauth/introspect, /oauth/l
 app.use('/auth', authRoutes);
 app.use('/clients', clientRoutes);
 app.use('/users', userRoutes);
+app.use('/audit-logs', auditRoutes);
 
 // Error handling
 app.use(errorHandler);

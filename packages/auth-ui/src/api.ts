@@ -1,5 +1,7 @@
 // API configuration
-export const API_BASE = '/api';
+// In dev (no vite server): set VITE_API_URL=http://localhost:3001 so browser calls auth-service directly.
+// In Docker/prod: unset → uses '/api' which nginx proxies to auth-service.
+export const API_BASE = (import.meta.env.VITE_API_URL as string) ?? '/api';
 
 // API endpoints
 export const endpoints = {
@@ -10,6 +12,8 @@ export const endpoints = {
     authorize: `${API_BASE}/oauth/authorize`,
     token: `${API_BASE}/oauth/token`,
     clients: `${API_BASE}/clients`,
+    clientLogs: (id: string) => `${API_BASE}/clients/${id}/logs`,
+    auditLogs: `${API_BASE}/audit-logs`,
 };
 
 // Storage keys
@@ -25,13 +29,41 @@ export interface User {
     email: string;
     name: string;
     userType: 'INTERNAL' | 'GOVERNMENT' | 'EXTERNAL';
+    isAdmin?: boolean;
 }
 
 export interface OAuthClient {
     id: string;
+    clientId: string;
     name: string;
     redirectUris: string[];
     scopes: string[];
+    grants: string[];
+    isActive: boolean;
+    createdAt: string;
+    clientSecret?: string; // only present after create/regenerate
+}
+
+export interface AuditLog {
+    id: string;
+    action: string;
+    userId: string | null;
+    clientId: string | null;
+    ip: string | null;
+    userAgent: string | null;
+    details: unknown;
+    createdAt: string;
+}
+
+// meta field returned by apiRequest for paginated endpoints
+export interface PaginatedResponse<T> {
+    data: T[]; // unused by callers (apiRequest unwraps to r.data directly)
+    meta: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
 }
 
 export interface AuthResponse {
@@ -130,7 +162,7 @@ export function redirectWithState(url: string): void {
 export async function apiRequest<T>(
     url: string,
     options: RequestInit = {}
-): Promise<{ success: boolean; data?: T; error?: string }> {
+): Promise<{ success: boolean; data?: T; meta?: PaginatedResponse<unknown>['meta']; error?: string }> {
     try {
         const token = getStoredToken();
         const headers: Record<string, string> = {
@@ -156,10 +188,9 @@ export async function apiRequest<T>(
             };
         }
 
-        // Backend wraps all responses: { success: true, data: <payload> }
-        // Unwrap so callers receive the payload directly
+        // Backend wraps all responses: { success: true, data: <payload>, meta?: <pagination> }
         const data = json?.data !== undefined ? json.data : json;
-        return { success: true, data };
+        return { success: true, data, meta: json?.meta };
     } catch (err) {
         return {
             success: false,

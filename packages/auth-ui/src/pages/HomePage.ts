@@ -38,10 +38,10 @@ export async function HomePage(): Promise<void> {
     }
 
     try {
-        const result = await apiRequest<{ user: User }>(endpoints.me);
+        const result = await apiRequest<User>(endpoints.me);
 
         if (result.success && result.data) {
-            showAuthenticated(app, result.data.user);
+            showAuthenticated(app, result.data);
         } else if (storedUser) {
             showAuthenticated(app, storedUser);
         } else {
@@ -79,6 +79,14 @@ function showAuthenticated(app: HTMLElement, user: User): void {
             </p>
 
             <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+                ${user.isAdmin ? `<a href="/admin" class="btn btn-secondary">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="3" width="20" height="14" rx="2"/>
+                        <path d="M8 21h8M12 17v4"/>
+                    </svg>
+                    Admin Panel
+                </a>` : ''}
                 <button type="button" class="btn btn-secondary" id="logout-btn">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
