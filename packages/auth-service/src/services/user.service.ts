@@ -106,9 +106,11 @@ export const userService = {
                     user = await prisma.user.create({ data: userData });
                     logger.info('Internal user created via LDAP', { userId: user.id });
                 } else {
+                    // Always update email to fix legacy @internal entries
                     user = await prisma.user.update({
                         where: { id: user.id },
                         data: {
+                            email: userData.email,
                             name: userData.name,
                             ldapDn: ldapUser.dn,
                             providerId: userData.providerId,
