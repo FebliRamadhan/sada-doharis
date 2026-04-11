@@ -11,6 +11,7 @@ import { prisma } from '../config/database.js';
 import { getRedis } from '../config/redis.js';
 import { sendSuccess, sendError, ValidationError } from '@sada/shared';
 import { auditService, AUDIT_ACTIONS } from '../services/audit.service.js';
+import { isAdminEmail } from '../middleware/adminGuard.js';
 
 const router = Router();
 
@@ -132,7 +133,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         });
 
         sendSuccess(res, {
-            user,
+            user: { ...user, isAdmin: isAdminEmail(user.email) },
             access_token: accessToken.token,
             token_type: 'Bearer',
             expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
@@ -223,7 +224,7 @@ router.post('/ldap/login', async (req: Request, res: Response, next: NextFunctio
         });
 
         sendSuccess(res, {
-            user,
+            user: { ...user, isAdmin: isAdminEmail(user.email) },
             access_token: accessToken.token,
             token_type: 'Bearer',
             expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
@@ -327,7 +328,7 @@ router.get('/splp/callback', async (req: Request, res: Response, next: NextFunct
         });
 
         sendSuccess(res, {
-            user,
+            user: { ...user, isAdmin: isAdminEmail(user.email) },
             access_token: accessToken.token,
             token_type: 'Bearer',
             expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
@@ -424,7 +425,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
         });
 
         sendSuccess(res, {
-            user,
+            user: { ...user, isAdmin: isAdminEmail(user.email) },
             access_token: accessToken.token,
             token_type: 'Bearer',
             expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
@@ -600,7 +601,6 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
         }
 
         const user = await userService.findById(userId);
-        const { isAdminEmail } = await import('../middleware/adminGuard.js');
         sendSuccess(res, { ...user, isAdmin: isAdminEmail(user.email) });
     } catch (error) {
         next(error);
