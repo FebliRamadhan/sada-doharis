@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
-    "dev:ui": "pnpm --filter @sada/auth-ui run dev",
+    "dev:ui": "concurrently \"pnpm --filter @sada/auth-ui run dev\" \"pnpm --filter @sada/auth-ui run serve\"",
     "build": "pnpm -r run build",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -40,10 +40,12 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "@vitest/coverage-v8": "^2.0.0",
+    "concurrently": "^9.2.1",
     "eslint": "^9.0.0",
     "jsdom": "^28.1.0",
     "prettier": "^3.0.0",
     "prisma": "^6.2.0",
+    "serve": "^14.2.4",
     "vitest": "^2.0.0"
   },
   "engines": {

@@ -600,7 +600,8 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
         }
 
         const user = await userService.findById(userId);
-        sendSuccess(res, user);
+        const { isAdminEmail } = await import('../middleware/adminGuard.js');
+        sendSuccess(res, { ...user, isAdmin: isAdminEmail(user.email) });
     } catch (error) {
         next(error);
     }

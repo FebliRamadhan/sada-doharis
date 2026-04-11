@@ -1,16 +1,47 @@
 /*
  * SADA SSO — Design System
- * Inspired by: digit.kemenkeu.go.id
- * Brand: Kementerian PANRB
- * Style: Government Authority — Accessible & Trustworthy
  * Fonts: Plus Jakarta Sans (heading) + Inter (body)
  * Colors: PANRB Navy + Gold Accent
  */
 
 /* ==========================================
-   GOOGLE FONTS IMPORT
+   1. EXTERNAL IMPORTS (must be first)
    ========================================== */
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+
+/* ==========================================
+   2. TAILWIND v4 + DaisyUI v5
+   prefix "d" → d-btn, d-card, d-badge …
+   ========================================== */
+@import "tailwindcss";
+@source "../src/**/*.ts";
+@plugin "daisyui" {
+  prefix: d;
+  themes: ["light"];
+}
+
+/* DaisyUI — PANRB brand theme override */
+[data-theme="light"], :root {
+  --color-primary:           #005598;
+  --color-primary-content:   #ffffff;
+  --color-secondary:         #01347C;
+  --color-secondary-content: #ffffff;
+  --color-accent:            #F5C218;
+  --color-accent-content:    #0F172A;
+  --color-neutral:           #334155;
+  --color-neutral-content:   #ffffff;
+  --color-base-100:          #ffffff;
+  --color-base-200:          #f8fafc;
+  --color-base-300:          #f1f5f9;
+  --color-base-content:      #0f172a;
+  --color-success:           #22c55e;
+  --color-warning:           #f59e0b;
+  --color-error:             #ef4444;
+  --color-info:              #3b82f6;
+  --radius-selector:         0.5rem;
+  --radius-field:            0.375rem;
+  --radius-box:              0.75rem;
+}
 
 /* ==========================================
    CSS VARIABLES & DESIGN TOKENS
@@ -994,4 +1025,309 @@ body {
   .auth-container {
     grid-template-columns: 3fr 2fr;
   }
+}
+
+
+/* ==========================================
+   ADMIN MODE — container override
+   (sidebar + main layout handled by Tailwind)
+   ========================================== */
+.auth-container.admin-mode {
+  display: block;
+  height: 100vh;
+  overflow: hidden;
+}
+.auth-container.admin-mode .brand-panel { display: none; }
+.auth-container.admin-mode .form-panel {
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.auth-container.admin-mode #app {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ==========================================
+   ADMIN — Vault Design System (PANRB adapted)
+   Principles: Tonal layering, no explicit borders,
+   editorial typography, generous whitespace
+   ========================================== */
+
+/* — Sidebar Nav — */
+.admin-nav-btn {
+  color: #64748B;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  border-right: 3px solid transparent;
+  border-radius: 0.5rem;
+  transition: all 200ms ease;
+}
+
+.admin-nav-btn:hover:not(.is-active) {
+  background: #E8ECF0;
+  color: #01347C;
+}
+
+.admin-nav-btn.is-active {
+  color: #01347C;
+  font-weight: 600;
+  background: #FFFFFF;
+  border-right-color: #01347C;
+  border-radius: 0.5rem 0 0 0.5rem;
+}
+
+/* — Vault Cards (tonal surface) — */
+.vault-card {
+  background: #FFFFFF;
+  box-shadow: 0 4px 20px -4px rgba(1, 52, 124, 0.05);
+  border: 1px solid rgba(1, 52, 124, 0.06);
+}
+
+/* — Table — */
+.vault-th {
+  padding: 1rem 1.5rem;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #64748B;
+}
+
+.vault-row {
+  border-bottom: 1px solid rgba(1, 52, 124, 0.04);
+  transition: background 200ms ease;
+}
+
+.vault-row:last-child {
+  border-bottom: none;
+}
+
+.vault-row:hover {
+  background: #F8F9FA;
+}
+
+/* Action buttons fade in on row hover */
+.vault-row .row-actions {
+  opacity: 0.25;
+  transition: opacity 200ms ease;
+}
+
+.vault-row:hover .row-actions {
+  opacity: 1;
+}
+
+/* — Badges — */
+.vault-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* — Icon Buttons — */
+.vault-icon-btn {
+  padding: 0.375rem;
+  border-radius: 0.5rem;
+  color: #64748B;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: background 200ms ease, color 200ms ease;
+}
+
+.vault-icon-btn:hover {
+  background: #E8ECF0;
+  color: #01347C;
+}
+
+/* — Form Labels — */
+.vault-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #64748B;
+  margin-bottom: 0.5rem;
+}
+
+/* — Form Inputs (Ghost Border principle) — */
+.vault-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  background: #F0F1F3;
+  color: #191C1D;
+  border: none;
+  outline: 2px solid transparent;
+  transition: outline-color 200ms ease, background 200ms ease;
+}
+
+.vault-input:focus {
+  outline-color: rgba(1, 52, 124, 0.2);
+  background: #FFFFFF;
+}
+
+.vault-input::placeholder {
+  color: #94A3B8;
+}
+
+/* — Buttons — */
+.vault-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: #FFFFFF;
+  background: linear-gradient(135deg, #01347C, #005598);
+  border: none;
+  cursor: pointer;
+  transition: opacity 200ms ease;
+}
+
+.vault-btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.vault-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vault-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: #64748B;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 200ms ease, color 200ms ease;
+}
+
+.vault-btn-ghost:hover {
+  background: #F0F1F3;
+  color: #01347C;
+}
+
+/* — Pagination — */
+.vault-page-btn {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #354E6B;
+  border-radius: 0.25rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background 200ms ease;
+}
+
+.vault-page-btn:hover {
+  background: #E8ECF0;
+}
+
+.vault-page-nav {
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+  color: #64748B;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background 200ms ease;
+}
+
+.vault-page-nav:hover:not(:disabled) {
+  background: #E8ECF0;
+}
+
+.vault-page-nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ==========================================
+   ADMIN — Modal (native dialog, no DaisyUI)
+   ========================================== */
+#admin-modal {
+  border: none;
+  border-radius: 1rem;
+  box-shadow: 0 12px 40px rgba(25, 28, 29, 0.12);
+  background: #fff;
+  padding: 1.5rem;
+  max-width: 32rem;
+  width: calc(100% - 2rem);
+  max-height: 90vh;
+  overflow-y: auto;
+  margin: auto;
+}
+
+#admin-modal::backdrop {
+  background: rgba(0, 0, 0, 0.35);
+  animation: admin-fade-in 200ms ease;
+}
+
+@keyframes admin-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* — Admin Spinner — */
+.admin-spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 3px solid rgba(1, 52, 124, 0.12);
+  border-top-color: #01347C;
+  border-radius: 50%;
+  animation: admin-spin 0.7s linear infinite;
+}
+
+.admin-spinner-sm {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-width: 2px;
+}
+
+@keyframes admin-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* — Admin Checkbox — */
+.admin-checkbox {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #01347C;
+  cursor: pointer;
+}
+
+/* — Admin hidden utility — */
+.admin-hidden {
+  display: none !important;
 }

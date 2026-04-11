@@ -138,12 +138,21 @@ services:
     environment:
       - NODE_ENV=production
       - AUTH_SERVICE_PORT=3001
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sada_db}?schema=public
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - OIDC_ISSUER=${OIDC_ISSUER}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ACCESS_TOKEN_EXPIRES_IN=${JWT_ACCESS_TOKEN_EXPIRES_IN:-15m}
       - JWT_REFRESH_TOKEN_EXPIRES_IN=${JWT_REFRESH_TOKEN_EXPIRES_IN:-7d}
       - CORS_ORIGIN=${CORS_ORIGIN}
+      - INTERNAL_EMAIL_DOMAIN=${INTERNAL_EMAIL_DOMAIN:-menpan.go.id}
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
+      # MySQL (tb_master_pegawai)
+      - MYSQL_HOST=${MYSQL_HOST:-}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_USER=${MYSQL_USER:-}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-main_db}
       # LDAP Configuration
       - LDAP_URL=${LDAP_URL:-}
       - LDAP_BIND_DN=${LDAP_BIND_DN:-}
@@ -194,6 +203,7 @@ services:
 
   # ===========================================
   # Auth UI (Production)
+  # Nginx serves SPA + proxies /api/* → auth-service via nginx.single-domain.conf
   # ===========================================
   auth-ui:
     build:
@@ -202,16 +212,15 @@ services:
     image: sada/auth-ui:${VERSION:-latest}
     container_name: sada-auth-ui-prod
     restart: always
-    environment:
-      - NODE_ENV=production
     ports:
       - "${AUTH_UI_PORT:-3002}:80"
     depends_on:
-      - auth-service
+      auth-service:
+        condition: service_healthy
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:80/" ]
+      test: [ "CMD", "curl", "-f", "http://localhost/health" ]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
       start_period: 10s
     deploy:
