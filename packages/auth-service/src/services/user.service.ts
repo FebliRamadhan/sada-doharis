@@ -162,12 +162,16 @@ export const userService = {
     async loginWithLdap(username: string, password: string) {
         const ldapUser = await ldapService.authenticate(username, password);
 
+        const internalDomain = process.env['INTERNAL_EMAIL_DOMAIN'] ?? 'bpjstk.go.id';
+        const resolvedEmail = ldapUser.mail || `${ldapUser.uid}@${internalDomain}`;
+
         // Find or create user
         let user = await prisma.user.findFirst({
             where: {
                 OR: [
                     { ldapDn: ldapUser.dn },
-                    { email: ldapUser.mail },
+                    { email: ldapUser.mail || undefined },
+                    { email: resolvedEmail },
                 ],
             },
         });
@@ -175,7 +179,7 @@ export const userService = {
         if (!user) {
             user = await prisma.user.create({
                 data: {
-                    email: ldapUser.mail || `${ldapUser.uid}@internal`,
+                    email: resolvedEmail,
                     name: ldapUser.cn,
                     userType: UserType.INTERNAL,
                     ldapDn: ldapUser.dn,
@@ -185,13 +189,18 @@ export const userService = {
             });
             logger.info('LDAP user created', { userId: user.id });
         } else {
-            // Update LDAP info
+            // Update LDAP info + fix legacy @internal emails
+            const updateData: Record<string, string> = {
+                name: ldapUser.cn,
+                ldapDn: ldapUser.dn,
+            };
+            if (user.email.endsWith('@internal')) {
+                updateData['email'] = resolvedEmail;
+                logger.info('Fixing legacy @internal email', { oldEmail: user.email, newEmail: resolvedEmail });
+            }
             user = await prisma.user.update({
                 where: { id: user.id },
-                data: {
-                    name: ldapUser.cn,
-                    ldapDn: ldapUser.dn,
-                },
+                data: updateData,
             });
         }
 
