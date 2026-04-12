@@ -224,6 +224,7 @@ async function handleAllow(oauthParams: OAuthParams): Promise<void> {
             client_id: oauthParams.clientId,
             redirect_uri: oauthParams.redirectUri,
             scope: oauthParams.scope,
+            consent: 'approved',
         });
         if (oauthParams.state) params.set('state', oauthParams.state);
         if (oauthParams.codeChallenge) params.set('code_challenge', oauthParams.codeChallenge);
