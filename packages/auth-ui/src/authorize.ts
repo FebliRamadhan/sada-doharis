@@ -2,8 +2,7 @@ import './style.css';
 import {
     endpoints,
     apiRequest,
-    getStoredToken,
-    getStoredUser,
+    setStoredUser,
     getUrlParams,
     SCOPE_DESCRIPTIONS,
     type User,
@@ -174,29 +173,21 @@ async function init(): Promise<void> {
         return;
     }
 
-    // Check if user is authenticated
-    const token = getStoredToken();
-    const storedUser = getStoredUser();
-
-    if (!token || !storedUser) {
-        // Redirect to login with return URL
-        const returnUrl = window.location.href;
-        window.location.href = `/login.html?return_url=${encodeURIComponent(returnUrl)}`;
-        return;
-    }
-
-    // Verify token and get fresh user data
+    // Resolve the user from /auth/me — works whether the caller has a Bearer
+    // token in sessionStorage (same tab) or just the SSO cookie (new tab on
+    // a second app). If neither works, fall through to the login page.
     try {
-        const result = await apiRequest<{ user: User }>(endpoints.me);
+        const result = await apiRequest<User>(endpoints.me);
 
-        if (!result.success) {
-            // Token expired, redirect to login
+        if (!result.success || !result.data) {
             const returnUrl = window.location.href;
             window.location.href = `/login.html?return_url=${encodeURIComponent(returnUrl)}`;
             return;
         }
 
-        const user = result.data?.user || storedUser;
+        const user = result.data;
+        // Refresh sessionStorage so subsequent same-tab navigation has the user too
+        setStoredUser(user);
         populateUserInfo(user);
 
         // Check if consent already on record — skip consent screen if so

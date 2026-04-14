@@ -7,6 +7,7 @@ import { userService } from '../services/user.service.js';
 import { tokenService } from '../services/token.service.js';
 import { splpService } from '../services/splp.service.js';
 import { ldapService } from '../services/ldap.service.js';
+import { sessionService } from '../services/session.service.js';
 import { prisma } from '../config/database.js';
 import { getRedis } from '../config/redis.js';
 import { sendSuccess, sendError, ValidationError } from '@sada/shared';
@@ -132,6 +133,8 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
             userAgent: req.headers['user-agent'],
         });
 
+        await sessionService.create(res, user.id);
+
         sendSuccess(res, {
             user: { ...user, isAdmin: isAdminEmail(user.email) },
             access_token: accessToken.token,
@@ -222,6 +225,8 @@ router.post('/ldap/login', async (req: Request, res: Response, next: NextFunctio
             userId: user.id,
             clientId: await getSystemClientId(),
         });
+
+        await sessionService.create(res, user.id);
 
         sendSuccess(res, {
             user: { ...user, isAdmin: isAdminEmail(user.email) },
@@ -327,6 +332,8 @@ router.get('/splp/callback', async (req: Request, res: Response, next: NextFunct
             clientId: await getSystemClientId(),
         });
 
+        await sessionService.create(res, user.id);
+
         sendSuccess(res, {
             user: { ...user, isAdmin: isAdminEmail(user.email) },
             access_token: accessToken.token,
@@ -424,6 +431,8 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
             userAgent: req.headers['user-agent'],
         });
 
+        await sessionService.create(res, user.id);
+
         sendSuccess(res, {
             user: { ...user, isAdmin: isAdminEmail(user.email) },
             access_token: accessToken.token,
@@ -483,6 +492,8 @@ router.get('/google/callback',
                 userId: user.id,
                 clientId: await getSystemClientId(),
             });
+
+            await sessionService.create(res, user.id);
 
             const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:3000';
             const redirectUrl = new URL('/auth/callback', frontendUrl);
@@ -544,6 +555,8 @@ router.get('/facebook/callback',
                 clientId: await getSystemClientId(),
             });
 
+            await sessionService.create(res, user.id);
+
             const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:3000';
             const redirectUrl = new URL('/auth/callback', frontendUrl);
             redirectUrl.searchParams.set('access_token', accessToken.token);
@@ -580,10 +593,32 @@ router.get('/facebook/callback',
  *       401:
  *         description: Not authenticated
  */
+/**
+ * @swagger
+ * /auth/logout:
+ *   post:
+ *     summary: Logout (destroys SSO session)
+ *     description: Destroys the auth-service SSO session and clears the session cookie.
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Logged out
+ */
+router.post('/logout', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        await sessionService.destroy(req, res);
+        sendSuccess(res, { logged_out: true });
+    } catch (error) {
+        next(error);
+    }
+});
+
 router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
     try {
         // x-user-id is set by the API gateway in production
-        // Fall back to Bearer token verification for direct / local-dev access
+        // Fall back to Bearer token verification for direct / local-dev access,
+        // and finally to the SSO session cookie so a fresh tab without sessionStorage
+        // can still recognise the user.
         let userId = req.headers['x-user-id'] as string | undefined;
 
         if (!userId) {
@@ -594,6 +629,11 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
                     userId = payload.sub;
                 }
             }
+        }
+
+        if (!userId) {
+            const sessionUserId = await sessionService.getUserId(req);
+            if (sessionUserId) userId = sessionUserId;
         }
 
         if (!userId) {

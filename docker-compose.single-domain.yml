@@ -7,6 +7,7 @@ version: '3.8'
 # Wajib set di .env:
 #   DOMAIN_URL=https://auth.menpan.go.id
 #   JWT_SECRET=<random-min-64-char>
+#   SESSION_COOKIE_SECRET=<random-min-64-char-different-from-JWT_SECRET>
 #
 # RSA keys di-generate otomatis saat container pertama kali jalan
 # dan disimpan ke ./keys/ (persisten antar restart).
@@ -79,6 +80,13 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET wajib diisi di .env}
       - JWT_ACCESS_TOKEN_EXPIRES_IN=${JWT_ACCESS_TOKEN_EXPIRES_IN:-15m}
       - JWT_REFRESH_TOKEN_EXPIRES_IN=${JWT_REFRESH_TOKEN_EXPIRES_IN:-7d}
+
+      # SSO Session Cookie (cross-app SSO)
+      # Single-domain deployment → cookie otomatis 1st-party, SESSION_COOKIE_DOMAIN
+      # boleh kosong. Set kalau perlu share lintas subdomain (mis. .menpan.go.id).
+      - SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET:?SESSION_COOKIE_SECRET wajib diisi di .env}
+      - SESSION_TTL=${SESSION_TTL:-7d}
+      - SESSION_COOKIE_DOMAIN=${SESSION_COOKIE_DOMAIN:-}
 
       # OAuth2 timeouts
       - OAUTH_AUTHORIZATION_CODE_EXPIRES_IN=${OAUTH_AUTHORIZATION_CODE_EXPIRES_IN:-600}

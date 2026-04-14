@@ -3,6 +3,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
 import { createLogger } from '@sada/shared';
 
 import { errorHandler } from './middleware/errorHandler.js';
@@ -44,6 +45,7 @@ app.use((_req, _res, next) => {
 // Request parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser(process.env['SESSION_COOKIE_SECRET'] ?? process.env['JWT_SECRET'] ?? 'dev-cookie-secret'));
 
 // Initialize Passport
 initPassport(app);

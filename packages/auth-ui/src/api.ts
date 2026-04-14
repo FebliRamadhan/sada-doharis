@@ -177,6 +177,9 @@ export async function apiRequest<T>(
         const response = await fetch(url, {
             ...options,
             headers,
+            // Include the SSO session cookie even when auth-ui and auth-service are
+            // on different origins (dev mode: 3002 ↔ 3001).
+            credentials: 'include',
         });
 
         const json = await response.json();

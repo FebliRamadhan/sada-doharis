@@ -82,6 +82,10 @@ services:
       - REDIS_URL=redis://redis:6379
       - OIDC_ISSUER=http://auth-service:3001
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key}
+      # SSO Session Cookie
+      - SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET:-}
+      - SESSION_TTL=${SESSION_TTL:-7d}
+      - SESSION_COOKIE_DOMAIN=${SESSION_COOKIE_DOMAIN:-}
       - ADMIN_EMAILS=${ADMIN_EMAILS:-admin@menpan.go.id}
       # LDAP Configuration
       - LDAP_URL=${LDAP_URL:-}

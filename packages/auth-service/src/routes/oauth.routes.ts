@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { oauthService } from '../services/oauth.service.js';
 import { tokenService } from '../services/token.service.js';
+import { sessionService } from '../services/session.service.js';
 import { prisma } from '../config/database.js';
 import { getRedis } from '../config/redis.js';
 import { sendSuccess, sendError, ValidationError, ErrorCodes } from '@sada/shared';
@@ -122,7 +123,7 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
 
         const { client_id, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, consent } = parsed.data;
 
-        // Resolve user identity: from gateway header OR Bearer token (direct UI access)
+        // Resolve user identity: gateway header → Bearer token → SSO session cookie
         let userId = req.headers['x-user-id'] as string;
 
         if (!userId) {
@@ -132,6 +133,13 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
                 const payload = tokenService.verifyToken(token);
                 if (payload?.sub) userId = payload.sub;
             }
+        }
+
+        if (!userId) {
+            // SSO fallback — recognise the user via the auth-service session cookie.
+            // This is what makes app2 skip the login page after app1 already authed.
+            const sessionUserId = await sessionService.getUserId(req);
+            if (sessionUserId) userId = sessionUserId;
         }
 
         if (!userId) {
