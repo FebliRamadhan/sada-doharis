@@ -16,14 +16,6 @@ const DEFAULT_APP_URL = (import.meta.env.VITE_DEFAULT_APP_URL as string | undefi
 export async function HomePage(): Promise<void> {
     const app = getAppContainer();
 
-    // When a default app is configured, the SSO portal acts as a pass-through:
-    // root path always sends the browser to that app. If the user is not
-    // authenticated, the app itself will round-trip back to /authorize.
-    if (DEFAULT_APP_URL) {
-        window.location.replace(DEFAULT_APP_URL);
-        return;
-    }
-
     // Initial loading state
     app.innerHTML = `
         <div class="auth-card">
@@ -39,32 +31,43 @@ export async function HomePage(): Promise<void> {
         </div>
     `;
 
+    // Skip the default-app redirect when the URL is mid-flow (OAuth callback,
+    // explicit error, or an authorize hand-off that landed on /).
+    const params = new URLSearchParams(window.location.search);
+    const isOauthFlow = params.has('code') || params.has('error') || params.has('client_id');
+
     const token = getStoredToken();
     const storedUser = getStoredUser();
 
-    if (!token) {
+    // Resolve the freshest user we can — Bearer token first, fall back to
+    // session cookie via /auth/me, then to whatever's in storage.
+    let user: User | null = null;
+    if (token) {
+        try {
+            const result = await apiRequest<User>(endpoints.me);
+            if (result.success && result.data) user = result.data;
+        } catch {
+            // ignore — fall back below
+        }
+    }
+    if (!user) user = storedUser;
+
+    // Default-app pass-through: non-admin users (or anonymous) get bounced to
+    // the configured app, which will round-trip back through /authorize if
+    // they're not signed in yet. Admins stay on the portal so they can reach
+    // /admin. OAuth flow params keep the user here as well.
+    if (DEFAULT_APP_URL && !isOauthFlow && !user?.isAdmin) {
+        window.location.replace(DEFAULT_APP_URL);
+        return;
+    }
+
+    if (!token || !user) {
+        if (token && !user) clearAuthStorage();
         showUnauthenticated(app);
         return;
     }
 
-    try {
-        const result = await apiRequest<User>(endpoints.me);
-
-        if (result.success && result.data) {
-            showAuthenticated(app, result.data);
-        } else if (storedUser) {
-            showAuthenticated(app, storedUser);
-        } else {
-            clearAuthStorage();
-            showUnauthenticated(app);
-        }
-    } catch {
-        if (storedUser) {
-            showAuthenticated(app, storedUser);
-        } else {
-            showUnauthenticated(app);
-        }
-    }
+    showAuthenticated(app, user);
 }
 
 function showAuthenticated(app: HTMLElement, user: User): void {
