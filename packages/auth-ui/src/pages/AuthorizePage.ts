@@ -5,8 +5,7 @@
 import {
     endpoints,
     apiRequest,
-    getStoredToken,
-    getStoredUser,
+    setStoredUser,
     SCOPE_DESCRIPTIONS,
     type User,
     type OAuthClient,
@@ -219,20 +218,8 @@ async function handleAllow(oauthParams: OAuthParams): Promise<void> {
     if (btnDeny) btnDeny.disabled = true;
 
     try {
-        const params = new URLSearchParams({
-            response_type: oauthParams.responseType,
-            client_id: oauthParams.clientId,
-            redirect_uri: oauthParams.redirectUri,
-            scope: oauthParams.scope,
-            consent: 'approved',
-        });
-        if (oauthParams.state) params.set('state', oauthParams.state);
-        if (oauthParams.codeChallenge) params.set('code_challenge', oauthParams.codeChallenge);
-        if (oauthParams.codeChallengeMethod) params.set('code_challenge_method', oauthParams.codeChallengeMethod);
-
-        // Use apiRequest so Bearer token is included — server returns JSON { redirect_url }
         const result = await apiRequest<{ redirect_url: string }>(
-            `${endpoints.authorize}?${params.toString()}`
+            buildAuthorizeQuery(oauthParams, true)
         );
 
         if (result.success && result.data?.redirect_url) {
@@ -255,6 +242,20 @@ async function handleAllow(oauthParams: OAuthParams): Promise<void> {
     }
 }
 
+function buildAuthorizeQuery(oauthParams: OAuthParams, withConsent = false): string {
+    const params = new URLSearchParams({
+        response_type: oauthParams.responseType,
+        client_id: oauthParams.clientId,
+        redirect_uri: oauthParams.redirectUri,
+        scope: oauthParams.scope,
+    });
+    if (oauthParams.state) params.set('state', oauthParams.state);
+    if (oauthParams.codeChallenge) params.set('code_challenge', oauthParams.codeChallenge);
+    if (oauthParams.codeChallengeMethod) params.set('code_challenge_method', oauthParams.codeChallengeMethod);
+    if (withConsent) params.set('consent', 'approved');
+    return `${endpoints.authorize}?${params.toString()}`;
+}
+
 async function init(): Promise<void> {
     const oauthParams = getOAuthParams();
     if (!oauthParams) {
@@ -262,25 +263,31 @@ async function init(): Promise<void> {
         return;
     }
 
-    const token = getStoredToken();
-    const storedUser = getStoredUser();
-
-    if (!token || !storedUser) {
-        const returnUrl = window.location.href;
-        router.navigate(`/login?return_url=${encodeURIComponent(returnUrl)}`);
-        return;
-    }
-
+    // Resolve the user via /auth/me — works whether the caller has a Bearer
+    // token in sessionStorage (same tab) or just the SSO cookie (new tab on
+    // a second app). If neither works, fall through to the login page.
     try {
-        const result = await apiRequest<{ user: User }>(endpoints.me);
+        const meResult = await apiRequest<User>(endpoints.me);
 
-        if (!result.success) {
+        if (!meResult.success || !meResult.data) {
             const returnUrl = window.location.href;
             router.navigate(`/login?return_url=${encodeURIComponent(returnUrl)}`);
             return;
         }
 
-        const user = result.data?.user || storedUser;
+        const user = meResult.data;
+        setStoredUser(user);
+
+        // Silent authorize — if consent is already on record for the requested
+        // scopes, the backend returns redirect_url and we skip the consent UI.
+        const silent = await apiRequest<{ redirect_url?: string; needs_consent?: boolean }>(
+            buildAuthorizeQuery(oauthParams)
+        );
+
+        if (silent.success && silent.data?.redirect_url) {
+            window.location.href = silent.data.redirect_url;
+            return;
+        }
 
         const clientResult = await apiRequest<OAuthClient>(
             `${endpoints.clients}/${oauthParams.clientId}`

@@ -16,6 +16,10 @@ RUN pnpm install --frozen-lockfile
 # Copy source files
 COPY packages/auth-ui ./packages/auth-ui
 
+# Build-time config (Vite inlines VITE_* at build time)
+ARG VITE_DEFAULT_APP_URL=""
+ENV VITE_DEFAULT_APP_URL=${VITE_DEFAULT_APP_URL}
+
 # Build the app
 WORKDIR /app/packages/auth-ui
 RUN pnpm run build

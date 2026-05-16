@@ -188,16 +188,17 @@ export const tokenService = {
     },
 
     /**
-     * Clean up expired tokens
+     * Clean up expired tokens and authorization codes
      */
     async cleanupExpiredTokens(): Promise<number> {
-        const result = await prisma.oAuthToken.deleteMany({
-            where: {
-                accessTokenExpiresAt: {
-                    lt: new Date(),
-                },
-            },
-        });
-        return result.count;
+        const [tokens, codes] = await Promise.all([
+            prisma.oAuthToken.deleteMany({
+                where: { accessTokenExpiresAt: { lt: new Date() } },
+            }),
+            prisma.oAuthAuthorizationCode.deleteMany({
+                where: { expiresAt: { lt: new Date() } },
+            }),
+        ]);
+        return tokens.count + codes.count;
     },
 };

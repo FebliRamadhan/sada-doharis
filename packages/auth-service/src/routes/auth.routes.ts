@@ -13,6 +13,7 @@ import { getRedis } from '../config/redis.js';
 import { sendSuccess, sendError, ValidationError } from '@sada/shared';
 import { auditService, AUDIT_ACTIONS } from '../services/audit.service.js';
 import { isAdminEmail } from '../middleware/adminGuard.js';
+import { csrfProtect } from '../middleware/csrf.js';
 
 const router = Router();
 
@@ -101,7 +102,7 @@ const registerSchema = z.object({
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/login', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/login', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const parsed = loginSchema.safeParse(req.body);
 
@@ -197,7 +198,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
  *       401:
  *         description: Invalid credentials
  */
-router.post('/ldap/login', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/ldap/login', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
     try {
         if (!ldapService.isConfigured()) {
             throw new ValidationError('LDAP is not configured');
@@ -399,7 +400,7 @@ router.get('/splp/callback', async (req: Request, res: Response, next: NextFunct
  *       409:
  *         description: Email already registered
  */
-router.post('/register', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/register', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const parsed = registerSchema.safeParse(req.body);
 
@@ -604,7 +605,7 @@ router.get('/facebook/callback',
  *       200:
  *         description: Logged out
  */
-router.post('/logout', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/logout', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
     try {
         await sessionService.destroy(req, res);
         sendSuccess(res, { logged_out: true });

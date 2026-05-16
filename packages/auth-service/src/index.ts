@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import { createLogger } from '@sada/shared';
 
+import { validateEnv } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestId } from './middleware/requestId.js';
 import { oauthRoutes } from './routes/oauth.routes.js';
@@ -23,12 +24,33 @@ import { connectRedis, disconnectRedis } from './config/redis.js';
 import { tokenService } from './services/token.service.js';
 
 const logger = createLogger('auth-service');
+
+// Fail fast if required env vars are missing/weak — keys/secrets must be set before
+// anything else loads (token.service evaluates JWT_SECRET at import time).
+validateEnv();
+
 const app = express();
 
 const PORT = process.env['AUTH_SERVICE_PORT'] ?? 3001;
 
 // Security middlewares
-app.use(helmet());
+const IS_PROD = process.env['NODE_ENV'] === 'production';
+app.use(
+    helmet({
+        // HSTS is only enforced in production behind TLS; sending it in dev over
+        // http://localhost can poison browsers for local development.
+        hsts: IS_PROD
+            ? { maxAge: 63072000, includeSubDomains: true, preload: true } // 2 years
+            : false,
+        referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+        crossOriginOpenerPolicy: { policy: 'same-origin' },
+        crossOriginResourcePolicy: { policy: 'same-site' },
+        // The auth UI lives on a different origin and loads via <script type=module>;
+        // helmet's default CSP would block it. Issuers that want CSP should configure
+        // it at the reverse proxy where origin/script sources are known.
+        contentSecurityPolicy: false,
+    }),
+);
 app.use(cors({
     origin: process.env['CORS_ORIGIN']?.split(',') ?? ['http://localhost:3000', 'http://localhost:3002'],
     credentials: true,

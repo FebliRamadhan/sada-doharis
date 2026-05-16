@@ -101,6 +101,20 @@ export const oauthService = {
             throw new InvalidGrantError('Invalid authorization code');
         }
 
+        // RFC 6749 §4.1.2 — code MUST be single-use. If we've already accepted
+        // this code once, treat any subsequent exchange as an attack and revoke
+        // every token that was issued against it.
+        if (authCode.used) {
+            await prisma.oAuthToken.deleteMany({
+                where: { userId: authCode.userId, clientId: authCode.clientId },
+            });
+            logger.warn('Authorization code reuse detected — revoked all tokens for user/client', {
+                userId: authCode.userId,
+                clientId: authCode.clientId,
+            });
+            throw new InvalidGrantError('Authorization code already used');
+        }
+
         // Check expiration
         if (authCode.expiresAt < new Date()) {
             await prisma.oAuthAuthorizationCode.delete({ where: { id: authCode.id } });
@@ -129,8 +143,11 @@ export const oauthService = {
             }
         }
 
-        // Delete used authorization code
-        await prisma.oAuthAuthorizationCode.delete({ where: { id: authCode.id } });
+        // Mark code as used (keep row for reuse-detection; cleanup job purges old rows)
+        await prisma.oAuthAuthorizationCode.update({
+            where: { id: authCode.id },
+            data: { used: true },
+        });
 
         // Generate tokens
         const accessToken = tokenService.generateAccessToken(
