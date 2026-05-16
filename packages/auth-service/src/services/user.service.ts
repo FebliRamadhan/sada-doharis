@@ -4,6 +4,7 @@ import { ldapService } from './ldap.service.js';
 import { splpService } from './splp.service.js';
 import { tokenService } from './token.service.js';
 import { pegawaiService } from './pegawai.service.js';
+import { auditService, AUDIT_ACTIONS } from './audit.service.js';
 import {
     UserType,
     UnauthorizedError,
@@ -17,6 +18,52 @@ import {
 
 const logger = createLogger('user-service');
 const SALT_ROUNDS = 12;
+
+const MAX_FAILED_ATTEMPTS = parseInt(process.env['MAX_FAILED_LOGIN_ATTEMPTS'] ?? '5', 10);
+const LOCKOUT_DURATION_MS =
+    parseInt(process.env['LOGIN_LOCKOUT_MINUTES'] ?? '15', 10) * 60 * 1000;
+
+async function recordFailedAttempt(userId: string): Promise<void> {
+    const user = await prisma.user.update({
+        where: { id: userId },
+        data: { failedLoginAttempts: { increment: 1 } },
+        select: { failedLoginAttempts: true, email: true },
+    });
+
+    if (user.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+        await prisma.user.update({
+            where: { id: userId },
+            data: { lockedUntil: new Date(Date.now() + LOCKOUT_DURATION_MS) },
+        });
+        logger.warn('Account locked after too many failed attempts', {
+            userId,
+            email: user.email,
+            attempts: user.failedLoginAttempts,
+        });
+        void auditService.log({
+            action: AUDIT_ACTIONS.ACCOUNT_LOCKED,
+            userId,
+            details: { attempts: user.failedLoginAttempts, lockoutMs: LOCKOUT_DURATION_MS },
+        });
+    }
+}
+
+async function resetFailedAttempts(userId: string): Promise<void> {
+    await prisma.user.update({
+        where: { id: userId },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+    });
+}
+
+function assertNotLocked(user: { lockedUntil: Date | null; email: string }): void {
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+        const minutesLeft = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+        logger.warn('Login attempt on locked account', { email: user.email, minutesLeft });
+        throw new UnauthorizedError(
+            `Account locked due to too many failed login attempts. Try again in ${minutesLeft} minute(s).`,
+        );
+    }
+}
 
 export const userService = {
     /**
@@ -72,6 +119,13 @@ export const userService = {
         if (pegawaiService.isInternalEmail(email) && ldapService.isConfigured()) {
             logger.info('Internal email detected, using LDAP auth', { email });
 
+            // Enforce lockout BEFORE touching LDAP so we don't hammer the directory
+            const lockCandidate = await prisma.user.findUnique({
+                where: { email },
+                select: { id: true, email: true, lockedUntil: true },
+            });
+            if (lockCandidate) assertNotLocked(lockCandidate);
+
             try {
                 // Extract username from email for LDAP
                 const username = email.split('@')[0];
@@ -118,6 +172,8 @@ export const userService = {
                     });
                 }
 
+                await resetFailedAttempts(user.id);
+
                 const sanitizedUser = this.sanitizeUser(user);
 
                 // Add pegawai profile metadata if available
@@ -131,6 +187,7 @@ export const userService = {
                 return sanitizedUser;
             } catch (error) {
                 logger.warn('LDAP auth failed for internal email', { email, error });
+                if (lockCandidate) await recordFailedAttempt(lockCandidate.id);
                 throw new UnauthorizedError('Invalid credentials');
             }
         }
@@ -144,8 +201,11 @@ export const userService = {
             throw new UnauthorizedError('Invalid credentials');
         }
 
+        assertNotLocked(user);
+
         const isValid = await bcrypt.compare(password, user.password);
         if (!isValid) {
+            await recordFailedAttempt(user.id);
             throw new UnauthorizedError('Invalid credentials');
         }
 
@@ -153,6 +213,7 @@ export const userService = {
             throw new UnauthorizedError('User account is inactive');
         }
 
+        await resetFailedAttempts(user.id);
         logger.info('User logged in', { userId: user.id });
 
         return this.sanitizeUser(user);
@@ -162,9 +223,24 @@ export const userService = {
      * Login with LDAP
      */
     async loginWithLdap(username: string, password: string) {
-        const ldapUser = await ldapService.authenticate(username, password);
-
+        // Pre-check lockout state for known users so brute-force on bare usernames
+        // is rate-limited too. Username might match either uid (ldapDn) or email prefix.
         const internalDomain = process.env['INTERNAL_EMAIL_DOMAIN'] ?? 'bpjstk.go.id';
+        const probableEmail = `${username}@${internalDomain}`;
+        const preLockUser = await prisma.user.findFirst({
+            where: { OR: [{ email: probableEmail }, { providerId: username, provider: 'ldap' }] },
+            select: { id: true, email: true, lockedUntil: true },
+        });
+        if (preLockUser) assertNotLocked(preLockUser);
+
+        let ldapUser;
+        try {
+            ldapUser = await ldapService.authenticate(username, password);
+        } catch (error) {
+            if (preLockUser) await recordFailedAttempt(preLockUser.id);
+            throw error;
+        }
+
         const resolvedEmail = ldapUser.mail || `${ldapUser.uid}@${internalDomain}`;
 
         // Find or create user
@@ -206,6 +282,7 @@ export const userService = {
             });
         }
 
+        await resetFailedAttempts(user.id);
         return this.sanitizeUser(user);
     },
 

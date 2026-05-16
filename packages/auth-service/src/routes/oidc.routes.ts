@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { prisma } from '../config/database.js';
 import { tokenService } from '../services/token.service.js';
 import { clientService } from '../services/client.service.js';
+import { sessionService } from '../services/session.service.js';
 import { getJWKS, getPublicKey } from '../config/keys.js';
 import { getRedis } from '../config/redis.js';
 import {
@@ -260,7 +261,13 @@ router.get('/logout', async (req: Request, res: Response, next: NextFunction) =>
 
             // Revoke all tokens
             await prisma.oAuthToken.deleteMany({ where: { userId } });
+
+            // End every SSO session belonging to this user (global single sign-out)
+            await sessionService.destroyAllForUser(userId);
         }
+
+        // Always clear the cookie on this browser, even if we couldn't resolve a userId
+        await sessionService.destroy(req, res);
 
         // Validate post_logout_redirect_uri against registered client URIs
         if (post_logout_redirect_uri) {

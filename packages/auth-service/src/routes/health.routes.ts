@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { checkAllDatabasesHealth } from '../config/database.js';
+import { checkRedisHealth } from '../config/redis.js';
 
 const router = Router();
 
@@ -6,29 +8,12 @@ const router = Router();
  * @swagger
  * /health:
  *   get:
- *     summary: Health check
- *     description: Returns service health status and uptime
+ *     summary: Liveness probe
+ *     description: Returns service liveness (does not check dependencies)
  *     tags: [Health]
  *     responses:
  *       200:
- *         description: Service is healthy
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: "healthy"
- *                 service:
- *                   type: string
- *                   example: "auth-service"
- *                 timestamp:
- *                   type: string
- *                   format: date-time
- *                 uptime:
- *                   type: number
- *                   description: Uptime in seconds
+ *         description: Service is alive
  */
 router.get('/', (_req, res) => {
     res.json({
@@ -43,31 +28,29 @@ router.get('/', (_req, res) => {
  * @swagger
  * /health/ready:
  *   get:
- *     summary: Readiness check
- *     description: Returns readiness status with dependency checks
+ *     summary: Readiness probe
+ *     description: Pings PostgreSQL and Redis; returns 503 if any dependency is down
  *     tags: [Health]
  *     responses:
  *       200:
- *         description: Service is ready
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: "ready"
- *                 checks:
- *                   type: object
- *                   properties:
- *                     database:
- *                       type: boolean
+ *         description: All dependencies reachable
+ *       503:
+ *         description: One or more dependencies are unreachable
  */
-router.get('/ready', (_req, res) => {
-    res.json({
-        status: 'ready',
+router.get('/ready', async (_req, res) => {
+    const [databases, redis] = await Promise.all([
+        checkAllDatabasesHealth(),
+        checkRedisHealth(),
+    ]);
+
+    const dbOk = databases.every((d) => d.connected);
+    const ready = dbOk && redis.connected;
+
+    res.status(ready ? 200 : 503).json({
+        status: ready ? 'ready' : 'unavailable',
         checks: {
-            database: true, // TODO: Add actual DB check
+            databases,
+            redis,
         },
     });
 });

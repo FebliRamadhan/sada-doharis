@@ -3,9 +3,11 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { oauthService } from '../services/oauth.service.js';
 import { tokenService } from '../services/token.service.js';
+import { sessionService } from '../services/session.service.js';
 import { prisma } from '../config/database.js';
 import { getRedis } from '../config/redis.js';
 import { sendSuccess, sendError, ValidationError, ErrorCodes } from '@sada/shared';
+import { csrfProtect } from '../middleware/csrf.js';
 
 // Consent TTL matches the refresh token session lifetime
 const CONSENT_TTL_SECONDS = (() => {
@@ -122,7 +124,20 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
 
         const { client_id, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, consent } = parsed.data;
 
-        // Resolve user identity: from gateway header OR Bearer token (direct UI access)
+        // Consent approval is a state-changing GET (legacy contract with auth-ui).
+        // Block cross-site invocations so an attacker can't trick a logged-in user
+        // into approving access to their own client via a crafted link.
+        if (consent === 'approved') {
+            const origin = req.headers.origin
+                ?? (req.headers.referer ? (() => { try { const u = new URL(req.headers.referer as string); return `${u.protocol}//${u.host}`; } catch { return null; } })() : null);
+            const allowed = (process.env['CORS_ORIGIN']?.split(',').map((s) => s.trim().replace(/\/$/, '')) ?? []);
+            if (!origin || !allowed.includes(origin.replace(/\/$/, ''))) {
+                sendError(res, ErrorCodes.FORBIDDEN, 'Consent must originate from the auth UI', 403);
+                return;
+            }
+        }
+
+        // Resolve user identity: gateway header → Bearer token → SSO session cookie
         let userId = req.headers['x-user-id'] as string;
 
         if (!userId) {
@@ -132,6 +147,13 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
                 const payload = tokenService.verifyToken(token);
                 if (payload?.sub) userId = payload.sub;
             }
+        }
+
+        if (!userId) {
+            // SSO fallback — recognise the user via the auth-service session cookie.
+            // This is what makes app2 skip the login page after app1 already authed.
+            const sessionUserId = await sessionService.getUserId(req);
+            if (sessionUserId) userId = sessionUserId;
         }
 
         if (!userId) {

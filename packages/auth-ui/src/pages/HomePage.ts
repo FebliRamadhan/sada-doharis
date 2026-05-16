@@ -11,8 +11,18 @@ import {
 } from '../api';
 import { router, getAppContainer } from '../router';
 
+const DEFAULT_APP_URL = (import.meta.env.VITE_DEFAULT_APP_URL as string | undefined)?.trim();
+
 export async function HomePage(): Promise<void> {
     const app = getAppContainer();
+
+    // When a default app is configured, the SSO portal acts as a pass-through:
+    // root path always sends the browser to that app. If the user is not
+    // authenticated, the app itself will round-trip back to /authorize.
+    if (DEFAULT_APP_URL) {
+        window.location.replace(DEFAULT_APP_URL);
+        return;
+    }
 
     // Initial loading state
     app.innerHTML = `

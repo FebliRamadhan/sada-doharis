@@ -7,6 +7,7 @@ version: '3.8'
 # Wajib set di .env:
 #   DOMAIN_URL=https://auth.menpan.go.id
 #   JWT_SECRET=<random-min-64-char>
+#   SESSION_COOKIE_SECRET=<random-min-64-char-different-from-JWT_SECRET>
 #
 # RSA keys di-generate otomatis saat container pertama kali jalan
 # dan disimpan ke ./keys/ (persisten antar restart).
@@ -80,6 +81,13 @@ services:
       - JWT_ACCESS_TOKEN_EXPIRES_IN=${JWT_ACCESS_TOKEN_EXPIRES_IN:-15m}
       - JWT_REFRESH_TOKEN_EXPIRES_IN=${JWT_REFRESH_TOKEN_EXPIRES_IN:-7d}
 
+      # SSO Session Cookie (cross-app SSO)
+      # Single-domain deployment → cookie otomatis 1st-party, SESSION_COOKIE_DOMAIN
+      # boleh kosong. Set kalau perlu share lintas subdomain (mis. .menpan.go.id).
+      - SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET:?SESSION_COOKIE_SECRET wajib diisi di .env}
+      - SESSION_TTL=${SESSION_TTL:-7d}
+      - SESSION_COOKIE_DOMAIN=${SESSION_COOKIE_DOMAIN:-}
+
       # OAuth2 timeouts
       - OAUTH_AUTHORIZATION_CODE_EXPIRES_IN=${OAUTH_AUTHORIZATION_CODE_EXPIRES_IN:-600}
       - OAUTH_ACCESS_TOKEN_EXPIRES_IN=${OAUTH_ACCESS_TOKEN_EXPIRES_IN:-3600}
@@ -131,6 +139,10 @@ services:
       - AUTH_RATE_LIMIT_MAX_REQUESTS=${AUTH_RATE_LIMIT_MAX_REQUESTS:-5}
       - TOKEN_RATE_LIMIT_MAX_REQUESTS=${TOKEN_RATE_LIMIT_MAX_REQUESTS:-10}
 
+      # Account lockout (brute force protection)
+      - MAX_FAILED_LOGIN_ATTEMPTS=${MAX_FAILED_LOGIN_ATTEMPTS:-5}
+      - LOGIN_LOCKOUT_MINUTES=${LOGIN_LOCKOUT_MINUTES:-15}
+
       # Misc
       - AUDIT_LOG_ENABLED=${AUDIT_LOG_ENABLED:-true}
       - TOKEN_CLEANUP_INTERVAL_MS=${TOKEN_CLEANUP_INTERVAL_MS:-3600000}
@@ -143,10 +155,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test:     ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      test:     ["CMD", "wget", "-qO-", "http://localhost:3001/health/ready"]
       interval: 30s
       timeout:  10s
       retries:  3
+      start_period: 30s
     expose:
       - "3001"
     networks:
@@ -157,6 +170,8 @@ services:
     build:
       context:    .
       dockerfile: docker/Dockerfile.auth-ui
+      args:
+        VITE_DEFAULT_APP_URL: ${VITE_DEFAULT_APP_URL:-}
     container_name: sada-nginx
     restart: unless-stopped
     volumes:

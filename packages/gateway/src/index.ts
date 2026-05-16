@@ -7,6 +7,7 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { createLogger } from '@sada/shared';
 
+import { validateEnv } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestId } from './middleware/requestId.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
@@ -17,12 +18,23 @@ import { connectRedis, disconnectRedis } from './config/redis.js';
 import { fetchJWKS } from './config/jwks.js';
 
 const logger = createLogger('gateway');
+
+validateEnv();
+
 const app = express();
 
 const PORT = process.env['PORT'] ?? 3000;
 
 // Security middlewares
-app.use(helmet());
+const IS_PROD = process.env['NODE_ENV'] === 'production';
+app.use(
+    helmet({
+        hsts: IS_PROD ? { maxAge: 63072000, includeSubDomains: true, preload: true } : false,
+        referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+        crossOriginResourcePolicy: { policy: 'same-site' },
+        contentSecurityPolicy: false,
+    }),
+);
 app.use(cors({
     origin: process.env['CORS_ORIGIN']?.split(',') ?? ['http://localhost:3002'],
     credentials: true,

@@ -20,6 +20,8 @@ model User {
   provider  String?  // google, facebook, ldap, splp, local
   providerId String? // External provider's user ID
   isActive  Boolean  @default(true)
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -93,6 +95,7 @@ model OAuthAuthorizationCode {
   codeChallenge       String?  // For PKCE
   codeChallengeMethod String?  // S256 or plain
   nonce               String?  // OIDC nonce for replay protection
+  used                Boolean  @default(false) // Single-use enforcement
 
   userId   String
   user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)

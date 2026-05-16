@@ -227,6 +227,9 @@ See `.env.example` for all available configuration options.
 - `DATABASE_URL` - PostgreSQL connection
 - `REDIS_URL` - Redis connection
 - `JWT_SECRET` - JWT signing key
+- `SESSION_COOKIE_SECRET` - Signs the `sada_sid` SSO cookie that enables cross-app SSO. Falls back to `JWT_SECRET` if unset; **must be set in production**
+- `SESSION_TTL` - SSO session lifetime (default `7d`)
+- `SESSION_COOKIE_DOMAIN` - Parent domain to share the SSO cookie across subdomains (e.g. `.example.com`); leave empty for single-host setups
 
 ### MySQL (Internal User Profiles)
 - `MYSQL_HOST` - MySQL server host

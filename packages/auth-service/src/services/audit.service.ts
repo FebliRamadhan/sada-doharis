@@ -7,6 +7,7 @@ const logger = createLogger('audit');
 export const AUDIT_ACTIONS = {
     LOGIN: 'LOGIN',
     LOGIN_FAILED: 'LOGIN_FAILED',
+    ACCOUNT_LOCKED: 'ACCOUNT_LOCKED',
     LOGIN_LDAP: 'LOGIN_LDAP',
     LOGIN_SPLP: 'LOGIN_SPLP',
     LOGIN_GOOGLE: 'LOGIN_GOOGLE',
