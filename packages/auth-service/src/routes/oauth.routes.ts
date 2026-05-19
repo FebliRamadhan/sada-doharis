@@ -144,8 +144,13 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
             const authHeader = req.headers['authorization'];
             if (authHeader?.startsWith('Bearer ')) {
                 const token = authHeader.slice(7);
-                const payload = tokenService.verifyToken(token);
-                if (payload?.sub) userId = payload.sub;
+                try {
+                    const payload = tokenService.verifyToken(token);
+                    if (payload?.sub) userId = payload.sub;
+                } catch {
+                    // Stale/expired Bearer → don't fail authorize; fall
+                    // through to the SSO session cookie path below.
+                }
             }
         }
 
