@@ -1,0 +1,179 @@
+name: PR Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main, develop]
+
+concurrency:
+  group: preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-images:
+    name: Build preview images
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { name: auth-service, dockerfile: docker/Dockerfile.auth }
+          - { name: gateway, dockerfile: docker/Dockerfile.gateway }
+          - { name: auth-ui, dockerfile: docker/Dockerfile.auth-ui }
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: version
+        run: echo "version=pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.target.dockerfile }}
+          push: true
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.target.name }}:${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.target.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target.name }}
+          build-args: |
+            VITE_DEFAULT_APP_URL=https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }}
+
+  deploy:
+    name: Deploy preview
+    if: github.event.action != 'closed'
+    needs: build-images
+    runs-on: ubuntu-latest
+    environment:
+      name: preview
+      url: https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }}
+    permissions:
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy compose & config to preview server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PREVIEW_HOST }}
+          username: ${{ secrets.PREVIEW_USER }}
+          key: ${{ secrets.PREVIEW_SSH_KEY }}
+          port: ${{ secrets.PREVIEW_SSH_PORT || 22 }}
+          source: "docker-compose.preview.yml,docker/nginx.single-domain.conf,prisma/"
+          target: ${{ secrets.PREVIEW_DEPLOY_PATH }}/pr-${{ github.event.pull_request.number }}
+
+      - name: Deploy stack
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PREVIEW_HOST }}
+          username: ${{ secrets.PREVIEW_USER }}
+          key: ${{ secrets.PREVIEW_SSH_KEY }}
+          port: ${{ secrets.PREVIEW_SSH_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            STACK_DIR="${{ secrets.PREVIEW_DEPLOY_PATH }}/pr-${{ github.event.pull_request.number }}"
+            cd "$STACK_DIR"
+
+            export COMPOSE_PROJECT_NAME="pr-${{ github.event.pull_request.number }}"
+            export PR_NUMBER="${{ github.event.pull_request.number }}"
+            export PREVIEW_DOMAIN="${{ vars.PREVIEW_DOMAIN }}"
+            export VERSION="${{ needs.build-images.outputs.version }}"
+            export AUTH_SERVICE_IMAGE="ghcr.io/${{ github.repository }}/auth-service"
+            export GATEWAY_IMAGE="ghcr.io/${{ github.repository }}/gateway"
+            export AUTH_UI_IMAGE="ghcr.io/${{ github.repository }}/auth-ui"
+
+            # Persist randomized secrets for this PR (so JWTs survive redeploys)
+            if [ ! -f .env.preview ]; then
+              cat > .env.preview <<EOF
+            JWT_SECRET=$(openssl rand -hex 32)
+            SESSION_COOKIE_SECRET=$(openssl rand -hex 32)
+            EOF
+            fi
+            set -a; . ./.env.preview; set +a
+
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+              -u "${{ secrets.GHCR_USER }}" --password-stdin
+
+            docker compose -f docker-compose.preview.yml pull
+            docker compose -f docker-compose.preview.yml run --rm auth-service \
+              pnpm --filter @sada/auth-service exec prisma migrate deploy \
+              --schema=../../prisma/schema.prisma
+            docker compose -f docker-compose.preview.yml up -d --remove-orphans
+
+      - name: Wait for preview to come up
+        run: |
+          URL="https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }}/health"
+          for i in {1..30}; do
+            if curl -fsS "$URL" >/dev/null; then
+              echo "Preview is up: $URL"
+              exit 0
+            fi
+            echo "Waiting for $URL ... ($i/30)"
+            sleep 6
+          done
+          echo "Preview failed to come up"
+          exit 1
+
+      - name: Comment preview URL on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: preview-deploy
+          message: |
+            **Preview deployed**
+
+            URL: https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }}
+            Image tag: `${{ needs.build-images.outputs.version }}`
+            Commit: ${{ github.event.pull_request.head.sha }}
+
+            Stack akan dihancurkan otomatis saat PR ditutup.
+
+  teardown:
+    name: Teardown preview
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Stop & remove stack
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PREVIEW_HOST }}
+          username: ${{ secrets.PREVIEW_USER }}
+          key: ${{ secrets.PREVIEW_SSH_KEY }}
+          port: ${{ secrets.PREVIEW_SSH_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            STACK_DIR="${{ secrets.PREVIEW_DEPLOY_PATH }}/pr-${{ github.event.pull_request.number }}"
+            if [ -d "$STACK_DIR" ]; then
+              cd "$STACK_DIR"
+              export COMPOSE_PROJECT_NAME="pr-${{ github.event.pull_request.number }}"
+              export PR_NUMBER="${{ github.event.pull_request.number }}"
+              export PREVIEW_DOMAIN="${{ vars.PREVIEW_DOMAIN }}"
+              export VERSION="placeholder"
+              export AUTH_SERVICE_IMAGE="placeholder"
+              export GATEWAY_IMAGE="placeholder"
+              export AUTH_UI_IMAGE="placeholder"
+              docker compose -f docker-compose.preview.yml down -v --remove-orphans || true
+              cd ..
+              rm -rf "$STACK_DIR"
+            fi
+
+      - name: Update PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: preview-deploy
+          message: |
+            **Preview removed** — stack untuk PR #${{ github.event.pull_request.number }} sudah di-teardown.
