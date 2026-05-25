@@ -182,13 +182,32 @@ export async function apiRequest<T>(
             credentials: 'include',
         });
 
-        const json = await response.json();
+        // Read as text first so we can gracefully handle HTML error pages
+        // returned by nginx/gateway (502/504/maintenance) instead of crashing
+        // with "Unexpected token '<'..." from response.json().
+        const contentType = response.headers.get('content-type') ?? '';
+        const rawText = await response.text();
+        let json: any = null;
+        if (contentType.includes('application/json') && rawText) {
+            try {
+                json = JSON.parse(rawText);
+            } catch {
+                // fall through — handled below
+            }
+        }
 
         if (!response.ok) {
             return {
                 success: false,
-                error: json?.error?.message || json?.message || 'Request failed',
+                error:
+                    json?.error?.message ||
+                    json?.message ||
+                    `Request failed (${response.status} ${response.statusText})`,
             };
+        }
+
+        if (!json) {
+            return { success: false, error: 'Invalid server response' };
         }
 
         // Backend wraps all responses: { success: true, data: <payload>, meta?: <pagination> }
