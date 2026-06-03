@@ -19,7 +19,8 @@ env:
 jobs:
   deploy:
     name: Deploy to production
-    runs-on: ubuntu-latest
+    # Self-hosted runner required: PROD_HOST is a private LAN IP unreachable from cloud runners
+    runs-on: self-hosted
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     environment:
       name: production
