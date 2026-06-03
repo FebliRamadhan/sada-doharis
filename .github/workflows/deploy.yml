@@ -59,11 +59,13 @@ jobs:
             set -euo pipefail
             cd "${{ secrets.PROD_DEPLOY_PATH }}"
 
-            # Image references resolve against GHCR; compose reads them via env
+            # Image references resolve against GHCR; compose reads them via env.
+            # GHCR repository names must be lowercase, so normalise the owner/repo.
             export VERSION="${{ steps.tag.outputs.tag }}"
-            export GATEWAY_IMAGE="ghcr.io/${{ github.repository }}/gateway"
-            export AUTH_SERVICE_IMAGE="ghcr.io/${{ github.repository }}/auth-service"
-            export AUTH_UI_IMAGE="ghcr.io/${{ github.repository }}/auth-ui"
+            REPO_LC="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+            export GATEWAY_IMAGE="ghcr.io/${REPO_LC}/gateway"
+            export AUTH_SERVICE_IMAGE="ghcr.io/${REPO_LC}/auth-service"
+            export AUTH_UI_IMAGE="ghcr.io/${REPO_LC}/auth-ui"
 
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
               -u "${{ secrets.GHCR_USER }}" --password-stdin
