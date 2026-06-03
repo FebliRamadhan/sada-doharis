@@ -1,0 +1,84 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (default: sha-<commit>)'
+        required: false
+        default: ''
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    environment:
+      name: production
+      url: ${{ vars.PROD_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Copy compose files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT || 22 }}
+          source: "docker-compose.prod.yml,docker-compose.single-domain.yml,docker/,prisma/"
+          target: ${{ secrets.PROD_DEPLOY_PATH }}
+
+      - name: Pull, migrate, restart
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.PROD_DEPLOY_PATH }}"
+
+            # Image references resolve against GHCR; compose reads them via env
+            export VERSION="${{ steps.tag.outputs.tag }}"
+            export GATEWAY_IMAGE="ghcr.io/${{ github.repository }}/gateway"
+            export AUTH_SERVICE_IMAGE="ghcr.io/${{ github.repository }}/auth-service"
+            export AUTH_UI_IMAGE="ghcr.io/${{ github.repository }}/auth-ui"
+
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+              -u "${{ secrets.GHCR_USER }}" --password-stdin
+
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml run --rm auth-service \
+              pnpm --filter @sada/auth-service exec prisma migrate deploy \
+              --schema=../../prisma/schema.prisma
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker image prune -f
+
+      - name: Healthcheck
+        run: |
+          for i in {1..20}; do
+            if curl -fsS "${{ vars.PROD_URL }}/health" >/dev/null; then
+              echo "Service is healthy"
+              exit 0
+            fi
+            echo "Waiting for service... ($i/20)"
+            sleep 6
+          done
+          echo "Healthcheck failed"
+          exit 1

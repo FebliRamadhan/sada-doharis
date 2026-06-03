@@ -52,18 +52,18 @@ export async function HomePage(): Promise<void> {
     }
     if (!user) user = storedUser;
 
-    // Default-app pass-through: non-admin users (or anonymous) get bounced to
-    // the configured app, which will round-trip back through /authorize if
-    // they're not signed in yet. Admins stay on the portal so they can reach
-    // /admin. OAuth flow params keep the user here as well.
-    if (DEFAULT_APP_URL && !isOauthFlow && !user?.isAdmin) {
-        window.location.replace(DEFAULT_APP_URL);
-        return;
-    }
-
+    // Anonymous users see the login page on the portal itself.
     if (!token || !user) {
         if (token && !user) clearAuthStorage();
         showUnauthenticated(app);
+        return;
+    }
+
+    // Authenticated non-admin: bounce to the default app (already signed in
+    // via SSO session cookie). Admins stay on the portal to reach /admin.
+    // OAuth flow params keep the user here regardless.
+    if (DEFAULT_APP_URL && !isOauthFlow && !user.isAdmin) {
+        window.location.replace(DEFAULT_APP_URL);
         return;
     }
 

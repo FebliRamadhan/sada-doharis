@@ -625,9 +625,15 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
         if (!userId) {
             const authHeader = req.headers['authorization'];
             if (authHeader?.startsWith('Bearer ')) {
-                const payload = tokenService.verifyToken(authHeader.slice(7));
-                if (payload?.sub) {
-                    userId = payload.sub;
+                try {
+                    const payload = tokenService.verifyToken(authHeader.slice(7));
+                    if (payload?.sub) {
+                        userId = payload.sub;
+                    }
+                } catch {
+                    // Expired/invalid Bearer is non-fatal here — fall back to
+                    // the SSO session cookie below so a stale access token
+                    // doesn't break /auth/me for the silent-authorize flow.
                 }
             }
         }

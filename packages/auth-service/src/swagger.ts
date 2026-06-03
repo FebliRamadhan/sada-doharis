@@ -61,6 +61,7 @@ All endpoints require appropriate authentication unless noted as public.
                                 'email': 'Email address',
                                 'read': 'Read access',
                                 'write': 'Write access',
+                                'pegawai': 'Data pegawai internal (NIP, nama lengkap)',
                             },
                         },
                     },

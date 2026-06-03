@@ -24,6 +24,7 @@ const INTERNAL_EMAIL_DOMAIN = process.env['INTERNAL_EMAIL_DOMAIN'] ?? 'bpjstk.go
 export interface Pegawai {
     nip: string;
     nama: string;
+    nama_cetak?: string;
     email: string;
     jabatan?: string;
     unit_kerja?: string;
@@ -72,6 +73,7 @@ export const pegawaiService = {
                 `SELECT
                     nip,
                     nama,
+                    nama_cetak,
                     email_kantor AS email,
                     unit_staf_id,
                     photo AS foto,
@@ -90,6 +92,7 @@ export const pegawaiService = {
             return {
                 nip: row.nip as string,
                 nama: row.nama as string,
+                nama_cetak: row.nama_cetak as string | undefined,
                 email: row.email as string,
                 unit_staf_id: row.unit_staf_id as number | undefined,
                 foto: row.foto as string | undefined,
@@ -112,6 +115,7 @@ export const pegawaiService = {
                 `SELECT
                     nip,
                     nama,
+                    nama_cetak,
                     email_kantor AS email,
                     unit_staf_id,
                     photo AS foto,
@@ -130,6 +134,7 @@ export const pegawaiService = {
             return {
                 nip: row.nip as string,
                 nama: row.nama as string,
+                nama_cetak: row.nama_cetak as string | undefined,
                 email: row.email as string,
                 unit_staf_id: row.unit_staf_id as number | undefined,
                 foto: row.foto as string | undefined,
