@@ -2,17 +2,13 @@
  * Callback Page Component
  * Handles OAuth callback responses
  */
-import {
-    setStoredToken,
-    setStoredUser,
-    type User,
-} from '../api';
+import { setStoredToken, setStoredUser, type User } from '../api';
 import { router, getAppContainer, getQueryParams } from '../router';
 
 export async function CallbackPage(): Promise<void> {
-    const app = getAppContainer();
+  const app = getAppContainer();
 
-    app.innerHTML = `
+  app.innerHTML = `
         <div class="auth-card">
             <div class="brand">
                 <div class="brand-logo">S</div>
@@ -61,117 +57,120 @@ export async function CallbackPage(): Promise<void> {
         </div>
     `;
 
-    handleCallback();
+  handleCallback();
 }
 
 function showLoading(message: string): void {
-    const loadingState = document.getElementById('loading-state');
-    const successState = document.getElementById('success-state');
-    const errorState = document.getElementById('error-state');
-    const statusMessage = document.getElementById('status-message');
+  const loadingState = document.getElementById('loading-state');
+  const successState = document.getElementById('success-state');
+  const errorState = document.getElementById('error-state');
+  const statusMessage = document.getElementById('status-message');
 
-    if (loadingState) loadingState.style.display = 'flex';
-    if (successState) successState.style.display = 'none';
-    if (errorState) errorState.style.display = 'none';
-    if (statusMessage) statusMessage.textContent = message;
+  if (loadingState) loadingState.style.display = 'flex';
+  if (successState) successState.style.display = 'none';
+  if (errorState) errorState.style.display = 'none';
+  if (statusMessage) statusMessage.textContent = message;
 }
 
 function showSuccess(): void {
-    const loadingState = document.getElementById('loading-state');
-    const successState = document.getElementById('success-state');
-    const errorState = document.getElementById('error-state');
-    const title = document.getElementById('title');
-    const subtitle = document.getElementById('subtitle');
+  const loadingState = document.getElementById('loading-state');
+  const successState = document.getElementById('success-state');
+  const errorState = document.getElementById('error-state');
+  const title = document.getElementById('title');
+  const subtitle = document.getElementById('subtitle');
 
-    if (loadingState) loadingState.style.display = 'none';
-    if (successState) successState.style.display = 'flex';
-    if (errorState) errorState.style.display = 'none';
-    if (title) title.textContent = 'Success';
-    if (subtitle) subtitle.textContent = 'Authentication completed successfully';
+  if (loadingState) loadingState.style.display = 'none';
+  if (successState) successState.style.display = 'flex';
+  if (errorState) errorState.style.display = 'none';
+  if (title) title.textContent = 'Success';
+  if (subtitle) subtitle.textContent = 'Authentication completed successfully';
 }
 
 function showError(message: string, details?: string): void {
-    const loadingState = document.getElementById('loading-state');
-    const successState = document.getElementById('success-state');
-    const errorState = document.getElementById('error-state');
-    const errorMessage = document.getElementById('error-message');
-    const errorDetails = document.getElementById('error-details');
-    const title = document.getElementById('title');
-    const subtitle = document.getElementById('subtitle');
+  const loadingState = document.getElementById('loading-state');
+  const successState = document.getElementById('success-state');
+  const errorState = document.getElementById('error-state');
+  const errorMessage = document.getElementById('error-message');
+  const errorDetails = document.getElementById('error-details');
+  const title = document.getElementById('title');
+  const subtitle = document.getElementById('subtitle');
 
-    if (loadingState) loadingState.style.display = 'none';
-    if (successState) successState.style.display = 'none';
-    if (errorState) errorState.style.display = 'flex';
-    if (title) title.textContent = 'Error';
-    if (subtitle) subtitle.textContent = 'Authentication failed';
-    if (errorMessage) errorMessage.textContent = message;
-    if (errorDetails && details) errorDetails.textContent = details;
+  if (loadingState) loadingState.style.display = 'none';
+  if (successState) successState.style.display = 'none';
+  if (errorState) errorState.style.display = 'flex';
+  if (title) title.textContent = 'Error';
+  if (subtitle) subtitle.textContent = 'Authentication failed';
+  if (errorMessage) errorMessage.textContent = message;
+  if (errorDetails && details) errorDetails.textContent = details;
 }
 
 async function handleCallback(): Promise<void> {
-    const params = getQueryParams();
+  const params = getQueryParams();
 
-    // Check for error in callback
-    const error = params.get('error');
-    if (error) {
-        const errorDesc = params.get('error_description') || 'An error occurred during authentication';
-        showError(error, errorDesc);
-        return;
+  // Check for error in callback
+  const error = params.get('error');
+  if (error) {
+    const errorDesc = params.get('error_description') || 'An error occurred during authentication';
+    showError(error, errorDesc);
+    return;
+  }
+
+  // Check for authorization code
+  const code = params.get('code');
+  if (code) {
+    showLoading('Processing authorization code...');
+    showSuccess();
+
+    // If there's a parent window (popup flow), communicate with it
+    if (window.opener) {
+      window.opener.postMessage(
+        {
+          type: 'oauth_callback',
+          code,
+          state: params.get('state'),
+        },
+        '*'
+      );
+      setTimeout(() => window.close(), 2000);
+    }
+    return;
+  }
+
+  // Check for access token (implicit flow or direct token)
+  const accessToken = params.get('access_token');
+  if (accessToken) {
+    showLoading('Storing access token...');
+    setStoredToken(accessToken);
+
+    // Try to get user info if available
+    const userJson = params.get('user');
+    if (userJson) {
+      try {
+        const user = JSON.parse(decodeURIComponent(userJson)) as User;
+        setStoredUser(user);
+      } catch {
+        // Ignore JSON parse errors
+      }
     }
 
-    // Check for authorization code
-    const code = params.get('code');
-    if (code) {
-        showLoading('Processing authorization code...');
-        showSuccess();
+    showSuccess();
 
-        // If there's a parent window (popup flow), communicate with it
-        if (window.opener) {
-            window.opener.postMessage({
-                type: 'oauth_callback',
-                code,
-                state: params.get('state'),
-            }, '*');
-            setTimeout(() => window.close(), 2000);
-        }
-        return;
-    }
+    // Redirect to home after short delay
+    const returnUrl = params.get('return_url') || '/';
+    setTimeout(() => {
+      router.navigate(returnUrl);
+    }, 1500);
+    return;
+  }
 
-    // Check for access token (implicit flow or direct token)
-    const accessToken = params.get('access_token');
-    if (accessToken) {
-        showLoading('Storing access token...');
-        setStoredToken(accessToken);
+  // Check for SPLP callback
+  const splpToken = params.get('splp_token');
+  if (splpToken) {
+    showLoading('Verifying SPLP authentication...');
+    showSuccess();
+    return;
+  }
 
-        // Try to get user info if available
-        const userJson = params.get('user');
-        if (userJson) {
-            try {
-                const user = JSON.parse(decodeURIComponent(userJson)) as User;
-                setStoredUser(user);
-            } catch {
-                // Ignore JSON parse errors
-            }
-        }
-
-        showSuccess();
-
-        // Redirect to home after short delay
-        const returnUrl = params.get('return_url') || '/';
-        setTimeout(() => {
-            router.navigate(returnUrl);
-        }, 1500);
-        return;
-    }
-
-    // Check for SPLP callback
-    const splpToken = params.get('splp_token');
-    if (splpToken) {
-        showLoading('Verifying SPLP authentication...');
-        showSuccess();
-        return;
-    }
-
-    // No recognized callback parameters
-    showError('Invalid callback', 'No valid authentication response was found.');
+  // No recognized callback parameters
+  showError('Invalid callback', 'No valid authentication response was found.');
 }

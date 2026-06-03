@@ -21,17 +21,17 @@ router.get('/:id/logs', adminGuard);
 
 // Validation schemas
 const createClientSchema = z.object({
-    name: z.string().min(1),
-    redirectUris: z.array(z.string().url()),
-    grants: z.array(z.enum(['authorization_code', 'client_credentials', 'refresh_token'])),
-    scopes: z.array(z.string()),
+  name: z.string().min(1),
+  redirectUris: z.array(z.string().url()),
+  grants: z.array(z.enum(['authorization_code', 'client_credentials', 'refresh_token'])),
+  scopes: z.array(z.string()),
 });
 
 const updateClientSchema = z.object({
-    name: z.string().min(1).optional(),
-    redirectUris: z.array(z.string().url()).optional(),
-    grants: z.array(z.enum(['authorization_code', 'client_credentials', 'refresh_token'])).optional(),
-    scopes: z.array(z.string()).optional(),
+  name: z.string().min(1).optional(),
+  redirectUris: z.array(z.string().url()).optional(),
+  grants: z.array(z.enum(['authorization_code', 'client_credentials', 'refresh_token'])).optional(),
+  scopes: z.array(z.string()).optional(),
 });
 
 /**
@@ -99,18 +99,18 @@ const updateClientSchema = z.object({
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const parsed = createClientSchema.safeParse(req.body);
+  try {
+    const parsed = createClientSchema.safeParse(req.body);
 
-        if (!parsed.success) {
-            throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
-        }
-
-        const client = await clientService.create(parsed.data);
-        sendSuccess(res, client, 201);
-    } catch (error) {
-        next(error);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
     }
+
+    const client = await clientService.create(parsed.data);
+    sendSuccess(res, client, 201);
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -156,15 +156,15 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
  *                       type: integer
  */
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const page = parseInt(req.query['page'] as string) || 1;
-        const limit = Math.min(parseInt(req.query['limit'] as string) || 10, 100);
+  try {
+    const page = parseInt(req.query['page'] as string) || 1;
+    const limit = Math.min(parseInt(req.query['limit'] as string) || 10, 100);
 
-        const result = await clientService.list(page, limit);
-        sendPaginated(res, result.data, result.meta.page, result.meta.limit, result.meta.total);
-    } catch (error) {
-        next(error);
-    }
+    const result = await clientService.list(page, limit);
+    sendPaginated(res, result.data, result.meta.page, result.meta.limit, result.meta.total);
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -195,14 +195,14 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
  *         description: Client not found
  */
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        // Try lookup by OAuth clientId first (used by auth-ui), fall back to internal id
-        const id = req.params['id'] as string;
-        const client = (await clientService.findByClientId(id)) ?? (await clientService.findById(id));
-        sendSuccess(res, client);
-    } catch (error) {
-        next(error);
-    }
+  try {
+    // Try lookup by OAuth clientId first (used by auth-ui), fall back to internal id
+    const id = req.params['id'] as string;
+    const client = (await clientService.findByClientId(id)) ?? (await clientService.findById(id));
+    sendSuccess(res, client);
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -246,18 +246,18 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
  *         description: Client not found
  */
 router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const parsed = updateClientSchema.safeParse(req.body);
+  try {
+    const parsed = updateClientSchema.safeParse(req.body);
 
-        if (!parsed.success) {
-            throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
-        }
-
-        const client = await clientService.update(req.params['id'] as string, parsed.data);
-        sendSuccess(res, client);
-    } catch (error) {
-        next(error);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
     }
+
+    const client = await clientService.update(req.params['id'] as string, parsed.data);
+    sendSuccess(res, client);
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -292,12 +292,12 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
  *         description: Client not found
  */
 router.post('/:id/regenerate-secret', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const client = await clientService.regenerateSecret(req.params['id'] as string);
-        sendSuccess(res, client);
-    } catch (error) {
-        next(error);
-    }
+  try {
+    const client = await clientService.regenerateSecret(req.params['id'] as string);
+    sendSuccess(res, client);
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -331,41 +331,41 @@ router.post('/:id/regenerate-secret', async (req: Request, res: Response, next: 
  *         description: Client not found
  */
 router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        await clientService.delete(req.params['id'] as string);
-        sendSuccess(res, { deleted: true });
-    } catch (error) {
-        next(error);
-    }
+  try {
+    await clientService.delete(req.params['id'] as string);
+    sendSuccess(res, { deleted: true });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * GET /clients/:id/logs — Audit logs for a specific OAuth client
  */
 router.get('/:id/logs', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const id = req.params['id'] as string;
-        const page = parseInt(req.query['page'] as string) || 1;
-        const limit = Math.min(parseInt(req.query['limit'] as string) || 20, 100);
-        const skip = (page - 1) * limit;
+  try {
+    const id = req.params['id'] as string;
+    const page = parseInt(req.query['page'] as string) || 1;
+    const limit = Math.min(parseInt(req.query['limit'] as string) || 20, 100);
+    const skip = (page - 1) * limit;
 
-        // Resolve internal UUID from either clientId or id
-        const client = (await clientService.findByClientId(id)) ?? (await clientService.findById(id));
+    // Resolve internal UUID from either clientId or id
+    const client = (await clientService.findByClientId(id)) ?? (await clientService.findById(id));
 
-        const [logs, total] = await Promise.all([
-            prisma.auditLog.findMany({
-                where: { clientId: client.id },
-                orderBy: { createdAt: 'desc' },
-                skip,
-                take: limit,
-            }),
-            prisma.auditLog.count({ where: { clientId: client.id } }),
-        ]);
+    const [logs, total] = await Promise.all([
+      prisma.auditLog.findMany({
+        where: { clientId: client.id },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.auditLog.count({ where: { clientId: client.id } }),
+    ]);
 
-        sendPaginated(res, logs, page, limit, total);
-    } catch (error) {
-        next(error);
-    }
+    sendPaginated(res, logs, page, limit, total);
+  } catch (error) {
+    next(error);
+  }
 });
 
 export { router as clientRoutes };

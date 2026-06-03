@@ -20,32 +20,32 @@ const router = Router();
 // Lazy-cached system client id to avoid per-request DB lookups
 let systemClientId: string | null = null;
 async function getSystemClientId(): Promise<string> {
-    if (!systemClientId) {
-        const client = await prisma.oAuthClient.findUnique({
-            where: { clientId: 'system-internal' },
-            select: { id: true },
-        });
-        if (!client) throw new Error('System OAuth client not found');
-        systemClientId = client.id;
-    }
-    return systemClientId;
+  if (!systemClientId) {
+    const client = await prisma.oAuthClient.findUnique({
+      where: { clientId: 'system-internal' },
+      select: { id: true },
+    });
+    if (!client) throw new Error('System OAuth client not found');
+    systemClientId = client.id;
+  }
+  return systemClientId;
 }
 
 // Validation schemas
 const loginSchema = z.object({
-    email: z.string().min(1), // accept email or username/NIP
-    password: z.string().min(1),
+  email: z.string().min(1), // accept email or username/NIP
+  password: z.string().min(1),
 });
 
 const ldapLoginSchema = z.object({
-    username: z.string().min(1),
-    password: z.string().min(1),
+  username: z.string().min(1),
+  password: z.string().min(1),
 });
 
 const registerSchema = z.object({
-    email: z.string().email(),
-    password: z.string().min(8),
-    name: z.string().min(1),
+  email: z.string().email(),
+  password: z.string().min(8),
+  name: z.string().min(1),
 });
 
 /**
@@ -103,49 +103,49 @@ const registerSchema = z.object({
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/login', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const parsed = loginSchema.safeParse(req.body);
+  try {
+    const parsed = loginSchema.safeParse(req.body);
 
-        if (!parsed.success) {
-            throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
-        }
-
-        const user = await userService.loginWithPassword(parsed.data.email, parsed.data.password);
-
-        // Generate tokens
-        const scopes = ['profile', 'email'];
-        const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
-        const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
-
-        await tokenService.storeToken({
-            accessToken: accessToken.token,
-            refreshToken: refreshToken.token,
-            accessTokenExpiresAt: accessToken.expiresAt,
-            refreshTokenExpiresAt: refreshToken.expiresAt,
-            scopes,
-            userId: user.id,
-            clientId: await getSystemClientId(),
-        });
-
-        void auditService.log({
-            action: AUDIT_ACTIONS.LOGIN,
-            userId: user.id,
-            ip: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-
-        await sessionService.create(res, user.id);
-
-        sendSuccess(res, {
-            user: { ...user, isAdmin: isAdminEmail(user.email) },
-            access_token: accessToken.token,
-            token_type: 'Bearer',
-            expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
-            refresh_token: refreshToken.token,
-        });
-    } catch (error) {
-        next(error);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
     }
+
+    const user = await userService.loginWithPassword(parsed.data.email, parsed.data.password);
+
+    // Generate tokens
+    const scopes = ['profile', 'email'];
+    const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
+    const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
+
+    await tokenService.storeToken({
+      accessToken: accessToken.token,
+      refreshToken: refreshToken.token,
+      accessTokenExpiresAt: accessToken.expiresAt,
+      refreshTokenExpiresAt: refreshToken.expiresAt,
+      scopes,
+      userId: user.id,
+      clientId: await getSystemClientId(),
+    });
+
+    void auditService.log({
+      action: AUDIT_ACTIONS.LOGIN,
+      userId: user.id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    await sessionService.create(res, user.id);
+
+    sendSuccess(res, {
+      user: { ...user, isAdmin: isAdminEmail(user.email) },
+      access_token: accessToken.token,
+      token_type: 'Bearer',
+      expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
+      refresh_token: refreshToken.token,
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -199,46 +199,46 @@ router.post('/login', csrfProtect, async (req: Request, res: Response, next: Nex
  *         description: Invalid credentials
  */
 router.post('/ldap/login', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        if (!ldapService.isConfigured()) {
-            throw new ValidationError('LDAP is not configured');
-        }
-
-        const parsed = ldapLoginSchema.safeParse(req.body);
-
-        if (!parsed.success) {
-            throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
-        }
-
-        const user = await userService.loginWithLdap(parsed.data.username, parsed.data.password);
-
-        // Generate tokens
-        const scopes = ['profile', 'email', 'internal'];
-        const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
-        const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
-
-        await tokenService.storeToken({
-            accessToken: accessToken.token,
-            refreshToken: refreshToken.token,
-            accessTokenExpiresAt: accessToken.expiresAt,
-            refreshTokenExpiresAt: refreshToken.expiresAt,
-            scopes,
-            userId: user.id,
-            clientId: await getSystemClientId(),
-        });
-
-        await sessionService.create(res, user.id);
-
-        sendSuccess(res, {
-            user: { ...user, isAdmin: isAdminEmail(user.email) },
-            access_token: accessToken.token,
-            token_type: 'Bearer',
-            expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
-            refresh_token: refreshToken.token,
-        });
-    } catch (error) {
-        next(error);
+  try {
+    if (!ldapService.isConfigured()) {
+      throw new ValidationError('LDAP is not configured');
     }
+
+    const parsed = ldapLoginSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
+    }
+
+    const user = await userService.loginWithLdap(parsed.data.username, parsed.data.password);
+
+    // Generate tokens
+    const scopes = ['profile', 'email', 'internal'];
+    const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
+    const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
+
+    await tokenService.storeToken({
+      accessToken: accessToken.token,
+      refreshToken: refreshToken.token,
+      accessTokenExpiresAt: accessToken.expiresAt,
+      refreshTokenExpiresAt: refreshToken.expiresAt,
+      scopes,
+      userId: user.id,
+      clientId: await getSystemClientId(),
+    });
+
+    await sessionService.create(res, user.id);
+
+    sendSuccess(res, {
+      user: { ...user, isAdmin: isAdminEmail(user.email) },
+      access_token: accessToken.token,
+      token_type: 'Bearer',
+      expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
+      refresh_token: refreshToken.token,
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -255,17 +255,17 @@ router.post('/ldap/login', csrfProtect, async (req: Request, res: Response, next
  *         description: SPLP not configured
  */
 router.get('/splp/authorize', async (req: Request, res: Response): Promise<void> => {
-    if (!splpService.isConfigured()) {
-        sendError(res, 'NOT_CONFIGURED', 'SPLP is not configured', 400);
-        return;
-    }
+  if (!splpService.isConfigured()) {
+    sendError(res, 'NOT_CONFIGURED', 'SPLP is not configured', 400);
+    return;
+  }
 
-    const state = crypto.randomBytes(16).toString('hex');
-    const redis = getRedis();
-    await redis.setex(`splp_state:${state}`, 600, 'valid');
+  const state = crypto.randomBytes(16).toString('hex');
+  const redis = getRedis();
+  await redis.setex(`splp_state:${state}`, 600, 'valid');
 
-    const authUrl = splpService.getAuthorizationUrl(state);
-    res.redirect(authUrl);
+  const authUrl = splpService.getAuthorizationUrl(state);
+  res.redirect(authUrl);
 });
 
 /**
@@ -294,57 +294,57 @@ router.get('/splp/authorize', async (req: Request, res: Response): Promise<void>
  *         description: Invalid or missing authorization code
  */
 router.get('/splp/callback', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { code, state, error } = req.query;
+  try {
+    const { code, state, error } = req.query;
 
-        if (error) {
-            throw new ValidationError(`SPLP error: ${error}`);
-        }
-
-        if (!code || typeof code !== 'string') {
-            throw new ValidationError('Missing authorization code');
-        }
-
-        // Verify CSRF state
-        if (!state || typeof state !== 'string') {
-            throw new ValidationError('Missing state parameter');
-        }
-        const redis = getRedis();
-        const storedState = await redis.get(`splp_state:${state}`);
-        if (!storedState) {
-            throw new ValidationError('Invalid or expired state parameter');
-        }
-        await redis.del(`splp_state:${state}`);
-
-        const user = await userService.loginWithSplp(code);
-
-        // Generate tokens
-        const scopes = ['profile', 'email', 'government'];
-        const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
-        const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
-
-        await tokenService.storeToken({
-            accessToken: accessToken.token,
-            refreshToken: refreshToken.token,
-            accessTokenExpiresAt: accessToken.expiresAt,
-            refreshTokenExpiresAt: refreshToken.expiresAt,
-            scopes,
-            userId: user.id,
-            clientId: await getSystemClientId(),
-        });
-
-        await sessionService.create(res, user.id);
-
-        sendSuccess(res, {
-            user: { ...user, isAdmin: isAdminEmail(user.email) },
-            access_token: accessToken.token,
-            token_type: 'Bearer',
-            expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
-            refresh_token: refreshToken.token,
-        });
-    } catch (error) {
-        next(error);
+    if (error) {
+      throw new ValidationError(`SPLP error: ${error}`);
     }
+
+    if (!code || typeof code !== 'string') {
+      throw new ValidationError('Missing authorization code');
+    }
+
+    // Verify CSRF state
+    if (!state || typeof state !== 'string') {
+      throw new ValidationError('Missing state parameter');
+    }
+    const redis = getRedis();
+    const storedState = await redis.get(`splp_state:${state}`);
+    if (!storedState) {
+      throw new ValidationError('Invalid or expired state parameter');
+    }
+    await redis.del(`splp_state:${state}`);
+
+    const user = await userService.loginWithSplp(code);
+
+    // Generate tokens
+    const scopes = ['profile', 'email', 'government'];
+    const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
+    const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
+
+    await tokenService.storeToken({
+      accessToken: accessToken.token,
+      refreshToken: refreshToken.token,
+      accessTokenExpiresAt: accessToken.expiresAt,
+      refreshTokenExpiresAt: refreshToken.expiresAt,
+      scopes,
+      userId: user.id,
+      clientId: await getSystemClientId(),
+    });
+
+    await sessionService.create(res, user.id);
+
+    sendSuccess(res, {
+      user: { ...user, isAdmin: isAdminEmail(user.email) },
+      access_token: accessToken.token,
+      token_type: 'Bearer',
+      expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
+      refresh_token: refreshToken.token,
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -401,49 +401,53 @@ router.get('/splp/callback', async (req: Request, res: Response, next: NextFunct
  *         description: Email already registered
  */
 router.post('/register', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const parsed = registerSchema.safeParse(req.body);
+  try {
+    const parsed = registerSchema.safeParse(req.body);
 
-        if (!parsed.success) {
-            throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
-        }
-
-        const user = await userService.register(parsed.data);
-
-        // Generate tokens
-        const scopes = ['profile', 'email'];
-        const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
-        const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
-
-        await tokenService.storeToken({
-            accessToken: accessToken.token,
-            refreshToken: refreshToken.token,
-            accessTokenExpiresAt: accessToken.expiresAt,
-            refreshTokenExpiresAt: refreshToken.expiresAt,
-            scopes,
-            userId: user.id,
-            clientId: await getSystemClientId(),
-        });
-
-        void auditService.log({
-            action: AUDIT_ACTIONS.REGISTER,
-            userId: user.id,
-            ip: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-
-        await sessionService.create(res, user.id);
-
-        sendSuccess(res, {
-            user: { ...user, isAdmin: isAdminEmail(user.email) },
-            access_token: accessToken.token,
-            token_type: 'Bearer',
-            expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
-            refresh_token: refreshToken.token,
-        }, 201);
-    } catch (error) {
-        next(error);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
     }
+
+    const user = await userService.register(parsed.data);
+
+    // Generate tokens
+    const scopes = ['profile', 'email'];
+    const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
+    const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
+
+    await tokenService.storeToken({
+      accessToken: accessToken.token,
+      refreshToken: refreshToken.token,
+      accessTokenExpiresAt: accessToken.expiresAt,
+      refreshTokenExpiresAt: refreshToken.expiresAt,
+      scopes,
+      userId: user.id,
+      clientId: await getSystemClientId(),
+    });
+
+    void auditService.log({
+      action: AUDIT_ACTIONS.REGISTER,
+      userId: user.id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    await sessionService.create(res, user.id);
+
+    sendSuccess(
+      res,
+      {
+        user: { ...user, isAdmin: isAdminEmail(user.email) },
+        access_token: accessToken.token,
+        token_type: 'Bearer',
+        expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
+        refresh_token: refreshToken.token,
+      },
+      201
+    );
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -457,10 +461,13 @@ router.post('/register', csrfProtect, async (req: Request, res: Response, next: 
  *       302:
  *         description: Redirect to Google OAuth consent screen
  */
-router.get('/google', passport.authenticate('google', {
+router.get(
+  '/google',
+  passport.authenticate('google', {
     scope: ['profile', 'email'],
     session: false,
-}));
+  })
+);
 
 /**
  * @swagger
@@ -475,37 +482,38 @@ router.get('/google', passport.authenticate('google', {
  *       401:
  *         description: Authentication failed
  */
-router.get('/google/callback',
-    passport.authenticate('google', { session: false, failureRedirect: '/auth/login' }),
-    async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            const user = req.user as { id: string };
-            const scopes = ['profile', 'email'];
-            const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
-            const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
+router.get(
+  '/google/callback',
+  passport.authenticate('google', { session: false, failureRedirect: '/auth/login' }),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user as { id: string };
+      const scopes = ['profile', 'email'];
+      const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
+      const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
 
-            await tokenService.storeToken({
-                accessToken: accessToken.token,
-                refreshToken: refreshToken.token,
-                accessTokenExpiresAt: accessToken.expiresAt,
-                refreshTokenExpiresAt: refreshToken.expiresAt,
-                scopes,
-                userId: user.id,
-                clientId: await getSystemClientId(),
-            });
+      await tokenService.storeToken({
+        accessToken: accessToken.token,
+        refreshToken: refreshToken.token,
+        accessTokenExpiresAt: accessToken.expiresAt,
+        refreshTokenExpiresAt: refreshToken.expiresAt,
+        scopes,
+        userId: user.id,
+        clientId: await getSystemClientId(),
+      });
 
-            await sessionService.create(res, user.id);
+      await sessionService.create(res, user.id);
 
-            const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:3000';
-            const redirectUrl = new URL('/auth/callback', frontendUrl);
-            redirectUrl.searchParams.set('access_token', accessToken.token);
-            redirectUrl.searchParams.set('refresh_token', refreshToken.token);
+      const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:3000';
+      const redirectUrl = new URL('/auth/callback', frontendUrl);
+      redirectUrl.searchParams.set('access_token', accessToken.token);
+      redirectUrl.searchParams.set('refresh_token', refreshToken.token);
 
-            res.redirect(redirectUrl.toString());
-        } catch (error) {
-            next(error);
-        }
+      res.redirect(redirectUrl.toString());
+    } catch (error) {
+      next(error);
     }
+  }
 );
 
 /**
@@ -519,10 +527,13 @@ router.get('/google/callback',
  *       302:
  *         description: Redirect to Facebook OAuth consent screen
  */
-router.get('/facebook', passport.authenticate('facebook', {
+router.get(
+  '/facebook',
+  passport.authenticate('facebook', {
     scope: ['email'],
     session: false,
-}));
+  })
+);
 
 /**
  * @swagger
@@ -537,37 +548,38 @@ router.get('/facebook', passport.authenticate('facebook', {
  *       401:
  *         description: Authentication failed
  */
-router.get('/facebook/callback',
-    passport.authenticate('facebook', { session: false, failureRedirect: '/auth/login' }),
-    async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            const user = req.user as { id: string };
-            const scopes = ['profile', 'email'];
-            const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
-            const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
+router.get(
+  '/facebook/callback',
+  passport.authenticate('facebook', { session: false, failureRedirect: '/auth/login' }),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user as { id: string };
+      const scopes = ['profile', 'email'];
+      const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
+      const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
 
-            await tokenService.storeToken({
-                accessToken: accessToken.token,
-                refreshToken: refreshToken.token,
-                accessTokenExpiresAt: accessToken.expiresAt,
-                refreshTokenExpiresAt: refreshToken.expiresAt,
-                scopes,
-                userId: user.id,
-                clientId: await getSystemClientId(),
-            });
+      await tokenService.storeToken({
+        accessToken: accessToken.token,
+        refreshToken: refreshToken.token,
+        accessTokenExpiresAt: accessToken.expiresAt,
+        refreshTokenExpiresAt: refreshToken.expiresAt,
+        scopes,
+        userId: user.id,
+        clientId: await getSystemClientId(),
+      });
 
-            await sessionService.create(res, user.id);
+      await sessionService.create(res, user.id);
 
-            const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:3000';
-            const redirectUrl = new URL('/auth/callback', frontendUrl);
-            redirectUrl.searchParams.set('access_token', accessToken.token);
-            redirectUrl.searchParams.set('refresh_token', refreshToken.token);
+      const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:3000';
+      const redirectUrl = new URL('/auth/callback', frontendUrl);
+      redirectUrl.searchParams.set('access_token', accessToken.token);
+      redirectUrl.searchParams.set('refresh_token', refreshToken.token);
 
-            res.redirect(redirectUrl.toString());
-        } catch (error) {
-            next(error);
-        }
+      res.redirect(redirectUrl.toString());
+    } catch (error) {
+      next(error);
     }
+  }
 );
 
 /**
@@ -606,52 +618,52 @@ router.get('/facebook/callback',
  *         description: Logged out
  */
 router.post('/logout', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        await sessionService.destroy(req, res);
-        sendSuccess(res, { logged_out: true });
-    } catch (error) {
-        next(error);
-    }
+  try {
+    await sessionService.destroy(req, res);
+    sendSuccess(res, { logged_out: true });
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        // x-user-id is set by the API gateway in production
-        // Fall back to Bearer token verification for direct / local-dev access,
-        // and finally to the SSO session cookie so a fresh tab without sessionStorage
-        // can still recognise the user.
-        let userId = req.headers['x-user-id'] as string | undefined;
+  try {
+    // x-user-id is set by the API gateway in production
+    // Fall back to Bearer token verification for direct / local-dev access,
+    // and finally to the SSO session cookie so a fresh tab without sessionStorage
+    // can still recognise the user.
+    let userId = req.headers['x-user-id'] as string | undefined;
 
-        if (!userId) {
-            const authHeader = req.headers['authorization'];
-            if (authHeader?.startsWith('Bearer ')) {
-                try {
-                    const payload = tokenService.verifyToken(authHeader.slice(7));
-                    if (payload?.sub) {
-                        userId = payload.sub;
-                    }
-                } catch {
-                    // Expired/invalid Bearer is non-fatal here — fall back to
-                    // the SSO session cookie below so a stale access token
-                    // doesn't break /auth/me for the silent-authorize flow.
-                }
-            }
+    if (!userId) {
+      const authHeader = req.headers['authorization'];
+      if (authHeader?.startsWith('Bearer ')) {
+        try {
+          const payload = tokenService.verifyToken(authHeader.slice(7));
+          if (payload?.sub) {
+            userId = payload.sub;
+          }
+        } catch {
+          // Expired/invalid Bearer is non-fatal here — fall back to
+          // the SSO session cookie below so a stale access token
+          // doesn't break /auth/me for the silent-authorize flow.
         }
-
-        if (!userId) {
-            const sessionUserId = await sessionService.getUserId(req);
-            if (sessionUserId) userId = sessionUserId;
-        }
-
-        if (!userId) {
-            throw new ValidationError('Not authenticated');
-        }
-
-        const user = await userService.findById(userId);
-        sendSuccess(res, { ...user, isAdmin: isAdminEmail(user.email) });
-    } catch (error) {
-        next(error);
+      }
     }
+
+    if (!userId) {
+      const sessionUserId = await sessionService.getUserId(req);
+      if (sessionUserId) userId = sessionUserId;
+    }
+
+    if (!userId) {
+      throw new ValidationError('Not authenticated');
+    }
+
+    const user = await userService.findById(userId);
+    sendSuccess(res, { ...user, isAdmin: isAdminEmail(user.email) });
+  } catch (error) {
+    next(error);
+  }
 });
 
 export { router as authRoutes };

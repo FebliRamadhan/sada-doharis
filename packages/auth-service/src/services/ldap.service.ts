@@ -14,129 +14,140 @@ const LDAP_SEARCH_FILTER = process.env['LDAP_SEARCH_FILTER'] ?? '(uid={{username
  * Characters: NUL, *, (, ), \
  */
 function escapeLdapFilter(input: string): string {
-    return input.replace(/[\x00*\(\)\\]/g, (char) =>
-        `\\${char.charCodeAt(0).toString(16).padStart(2, '0')}`
-    );
+  // NUL is a required LDAP filter special char (RFC 4515); the control-char rule is intentional here
+  // eslint-disable-next-line no-control-regex
+  return input.replace(
+    /[\x00*()\\]/g,
+    (char) => `\\${char.charCodeAt(0).toString(16).padStart(2, '0')}`
+  );
 }
 
 export const ldapService = {
-    /**
-     * Authenticate user via LDAP
-     */
-    async authenticate(username: string, password: string): Promise<LdapUser> {
-        return new Promise((resolve, reject) => {
-            const client = ldap.createClient({
-                url: LDAP_URL,
-                timeout: 5000,
-                connectTimeout: 10000,
-            });
+  /**
+   * Authenticate user via LDAP
+   */
+  async authenticate(username: string, password: string): Promise<LdapUser> {
+    return new Promise((resolve, reject) => {
+      const client = ldap.createClient({
+        url: LDAP_URL,
+        timeout: 5000,
+        connectTimeout: 10000,
+      });
 
-            client.on('error', (err) => {
-                logger.error('LDAP connection error', { error: err.message });
-                reject(new UnauthorizedError('LDAP connection failed'));
-            });
+      client.on('error', (err) => {
+        logger.error('LDAP connection error', { error: err.message });
+        reject(new UnauthorizedError('LDAP connection failed'));
+      });
 
-            client.bind(LDAP_BIND_DN, LDAP_BIND_PASSWORD, (bindErr) => {
-                if (bindErr) {
-                    logger.error('LDAP bind error', { error: bindErr.message });
-                    client.destroy();
-                    reject(new UnauthorizedError('LDAP authentication failed'));
-                    return;
+      client.bind(LDAP_BIND_DN, LDAP_BIND_PASSWORD, (bindErr) => {
+        if (bindErr) {
+          logger.error('LDAP bind error', { error: bindErr.message });
+          client.destroy();
+          reject(new UnauthorizedError('LDAP authentication failed'));
+          return;
+        }
+
+        const searchFilter = LDAP_SEARCH_FILTER.replace('{{username}}', escapeLdapFilter(username));
+        const searchOptions: ldap.SearchOptions = {
+          filter: searchFilter,
+          scope: 'sub',
+          attributes: ['dn', 'uid', 'cn', 'mail', 'department', 'title'],
+        };
+
+        client.search(LDAP_SEARCH_BASE, searchOptions, (searchErr, res) => {
+          if (searchErr) {
+            logger.error('LDAP search error', { error: searchErr.message });
+            client.destroy();
+            reject(new UnauthorizedError('User not found'));
+            return;
+          }
+
+          let userEntry: ldap.SearchEntry | null = null;
+          let settled = false;
+
+          // Zimbra may send referral errors AFTER delivering the entry.
+          // Use settled flag so only the first resolution wins.
+          const settle = (fn: () => void) => {
+            if (settled) return;
+            settled = true;
+            fn();
+          };
+
+          res.on('searchEntry', (entry) => {
+            userEntry = entry;
+          });
+
+          res.on('error', (err) => {
+            if (userEntry) {
+              // Entry already found — treat referral/size-limit errors as non-fatal
+              logger.warn('LDAP referral/error ignored (entry already found)', {
+                error: err.message,
+              });
+              bindUser();
+            } else {
+              logger.error('LDAP search result error', { error: err.message });
+              settle(() => {
+                client.destroy();
+                reject(new UnauthorizedError('User not found'));
+              });
+            }
+          });
+
+          res.on('end', () => {
+            if (!userEntry) {
+              settle(() => {
+                client.destroy();
+                reject(new UnauthorizedError('User not found'));
+              });
+              return;
+            }
+            bindUser();
+          });
+
+          const bindUser = () => {
+            if (!userEntry) return;
+            const userDn = userEntry.dn.toString();
+
+            settle(() => {
+              client.bind(userDn, password, (authErr) => {
+                client.destroy();
+
+                if (authErr) {
+                  logger.warn('LDAP authentication failed', { username });
+                  reject(new UnauthorizedError('Invalid credentials'));
+                  return;
                 }
 
-                const searchFilter = LDAP_SEARCH_FILTER.replace('{{username}}', escapeLdapFilter(username));
-                const searchOptions: ldap.SearchOptions = {
-                    filter: searchFilter,
-                    scope: 'sub',
-                    attributes: ['dn', 'uid', 'cn', 'mail', 'department', 'title'],
+                const getAttribute = (name: string): string | undefined => {
+                  const e = userEntry as unknown as { object?: Record<string, unknown> };
+                  const attr = e.object?.[name];
+                  if (Array.isArray(attr)) return String(attr[0]);
+                  return attr ? String(attr) : undefined;
                 };
 
-                client.search(LDAP_SEARCH_BASE, searchOptions, (searchErr, res) => {
-                    if (searchErr) {
-                        logger.error('LDAP search error', { error: searchErr.message });
-                        client.destroy();
-                        reject(new UnauthorizedError('User not found'));
-                        return;
-                    }
+                const ldapUser: LdapUser = {
+                  dn: userDn,
+                  uid: getAttribute('uid') ?? username,
+                  cn: getAttribute('cn') ?? username,
+                  mail: getAttribute('mail') ?? '',
+                  department: getAttribute('department'),
+                  title: getAttribute('title'),
+                };
 
-                    let userEntry: ldap.SearchEntry | null = null;
-                    let settled = false;
-
-                    // Zimbra may send referral errors AFTER delivering the entry.
-                    // Use settled flag so only the first resolution wins.
-                    const settle = (fn: () => void) => {
-                        if (settled) return;
-                        settled = true;
-                        fn();
-                    };
-
-                    res.on('searchEntry', (entry) => {
-                        userEntry = entry;
-                    });
-
-                    res.on('error', (err) => {
-                        if (userEntry) {
-                            // Entry already found — treat referral/size-limit errors as non-fatal
-                            logger.warn('LDAP referral/error ignored (entry already found)', { error: err.message });
-                            bindUser();
-                        } else {
-                            logger.error('LDAP search result error', { error: err.message });
-                            settle(() => { client.destroy(); reject(new UnauthorizedError('User not found')); });
-                        }
-                    });
-
-                    res.on('end', () => {
-                        if (!userEntry) {
-                            settle(() => { client.destroy(); reject(new UnauthorizedError('User not found')); });
-                            return;
-                        }
-                        bindUser();
-                    });
-
-                    const bindUser = () => {
-                        if (!userEntry) return;
-                        const userDn = userEntry.dn.toString();
-
-                        settle(() => {
-                            client.bind(userDn, password, (authErr) => {
-                                client.destroy();
-
-                                if (authErr) {
-                                    logger.warn('LDAP authentication failed', { username });
-                                    reject(new UnauthorizedError('Invalid credentials'));
-                                    return;
-                                }
-
-                                const getAttribute = (name: string): string | undefined => {
-                                    const e = userEntry as unknown as { object?: Record<string, unknown> };
-                                    const attr = e.object?.[name];
-                                    if (Array.isArray(attr)) return String(attr[0]);
-                                    return attr ? String(attr) : undefined;
-                                };
-
-                                const ldapUser: LdapUser = {
-                                    dn: userDn,
-                                    uid: getAttribute('uid') ?? username,
-                                    cn: getAttribute('cn') ?? username,
-                                    mail: getAttribute('mail') ?? '',
-                                    department: getAttribute('department'),
-                                    title: getAttribute('title'),
-                                };
-
-                                logger.info('LDAP authentication successful', { username });
-                                resolve(ldapUser);
-                            });
-                        });
-                    };
-                });
+                logger.info('LDAP authentication successful', { username });
+                resolve(ldapUser);
+              });
             });
+          };
         });
-    },
+      });
+    });
+  },
 
-    /**
-     * Check if LDAP is configured
-     */
-    isConfigured(): boolean {
-        return !!(LDAP_URL && LDAP_BIND_DN && LDAP_SEARCH_BASE);
-    },
+  /**
+   * Check if LDAP is configured
+   */
+  isConfigured(): boolean {
+    return !!(LDAP_URL && LDAP_BIND_DN && LDAP_SEARCH_BASE);
+  },
 };

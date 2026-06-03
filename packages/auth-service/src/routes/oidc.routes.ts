@@ -10,13 +10,13 @@ import { pegawaiService } from '../services/pegawai.service.js';
 import { getJWKS, getPublicKey } from '../config/keys.js';
 import { getRedis } from '../config/redis.js';
 import {
-    sendSuccess,
-    sendError,
-    ValidationError,
-    UnauthorizedError,
-    type AccessTokenPayload,
-    type OIDCUserInfoResponse,
-    type TokenIntrospectionResponse,
+  sendSuccess,
+  sendError,
+  ValidationError,
+  UnauthorizedError,
+  type AccessTokenPayload,
+  type OIDCUserInfoResponse,
+  type TokenIntrospectionResponse,
 } from '@sada/shared';
 
 const router = Router();
@@ -36,7 +36,7 @@ const router = Router();
  *         description: JWKS response
  */
 router.get('/.well-known/jwks.json', (_req: Request, res: Response) => {
-    res.json(getJWKS());
+  res.json(getJWKS());
 });
 
 // ================================================
@@ -58,78 +58,85 @@ router.get('/.well-known/jwks.json', (_req: Request, res: Response) => {
  *         description: Invalid or missing token
  */
 router.get('/userinfo', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) {
-            throw new UnauthorizedError('Missing Bearer token');
-        }
-
-        const token = authHeader.substring(7);
-        let payload: AccessTokenPayload;
-        try {
-            payload = tokenService.verifyToken<AccessTokenPayload>(token);
-        } catch {
-            throw new UnauthorizedError('Invalid or expired token');
-        }
-
-        if (payload.type !== 'user') {
-            throw new UnauthorizedError('UserInfo requires a user token');
-        }
-
-        const user = await prisma.user.findUnique({
-            where: { id: payload.sub },
-            select: { id: true, email: true, name: true, isActive: true, providerId: true, userType: true },
-        });
-
-        if (!user || !user.isActive) {
-            throw new UnauthorizedError('User not found or inactive');
-        }
-
-        const response: OIDCUserInfoResponse = { sub: user.id };
-
-        if (payload.scopes.includes('profile')) {
-            response.name = user.name;
-            response.preferred_username = user.email.split('@')[0];
-        }
-
-        if (payload.scopes.includes('email')) {
-            response.email = user.email;
-            // Internal employees authenticate via LDAP/company directory → email trusted
-            response.email_verified = user.userType === 'INTERNAL';
-        }
-
-        // Employee claims — only for internal users with the `pegawai` scope.
-        // NIP is already persisted in user.providerId; nama_cetak comes from MySQL.
-        if (payload.scopes.includes('pegawai') && user.userType === 'INTERNAL') {
-            response.nip = user.providerId ?? undefined;
-
-            if (pegawaiService.isConfigured() && user.providerId) {
-                try {
-                    const pegawai = await pegawaiService.getByNip(user.providerId);
-                    if (pegawai) {
-                        response.nip = pegawai.nip;
-                        response.fullname = pegawai.nama_cetak;
-                    }
-                } catch {
-                    // MySQL unavailable — keep NIP from providerId, skip fullname
-                }
-            }
-        }
-
-        res.json(response);
-    } catch (error) {
-        next(error);
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      throw new UnauthorizedError('Missing Bearer token');
     }
+
+    const token = authHeader.substring(7);
+    let payload: AccessTokenPayload;
+    try {
+      payload = tokenService.verifyToken<AccessTokenPayload>(token);
+    } catch {
+      throw new UnauthorizedError('Invalid or expired token');
+    }
+
+    if (payload.type !== 'user') {
+      throw new UnauthorizedError('UserInfo requires a user token');
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        isActive: true,
+        providerId: true,
+        userType: true,
+      },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedError('User not found or inactive');
+    }
+
+    const response: OIDCUserInfoResponse = { sub: user.id };
+
+    if (payload.scopes.includes('profile')) {
+      response.name = user.name;
+      response.preferred_username = user.email.split('@')[0];
+    }
+
+    if (payload.scopes.includes('email')) {
+      response.email = user.email;
+      // Internal employees authenticate via LDAP/company directory → email trusted
+      response.email_verified = user.userType === 'INTERNAL';
+    }
+
+    // Employee claims — only for internal users with the `pegawai` scope.
+    // NIP is already persisted in user.providerId; nama_cetak comes from MySQL.
+    if (payload.scopes.includes('pegawai') && user.userType === 'INTERNAL') {
+      response.nip = user.providerId ?? undefined;
+
+      if (pegawaiService.isConfigured() && user.providerId) {
+        try {
+          const pegawai = await pegawaiService.getByNip(user.providerId);
+          if (pegawai) {
+            response.nip = pegawai.nip;
+            response.fullname = pegawai.nama_cetak;
+          }
+        } catch {
+          // MySQL unavailable — keep NIP from providerId, skip fullname
+        }
+      }
+    }
+
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
 });
 
 // ================================================
 // POST /oauth/introspect (RFC 7662)
 // ================================================
 const introspectSchema = z.object({
-    token: z.string().min(1),
-    token_type_hint: z.enum(['access_token', 'refresh_token']).optional(),
-    client_id: z.string().min(1),
-    client_secret: z.string().min(1),
+  token: z.string().min(1),
+  token_type_hint: z.enum(['access_token', 'refresh_token']).optional(),
+  client_id: z.string().min(1),
+  client_secret: z.string().min(1),
 });
 
 /**
@@ -161,54 +168,54 @@ const introspectSchema = z.object({
  *         description: Token introspection result
  */
 router.post('/introspect', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const parsed = introspectSchema.safeParse(req.body);
-        if (!parsed.success) {
-            throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
-        }
-
-        const { token, client_id, client_secret } = parsed.data;
-
-        // Require client authentication
-        const client = await clientService.validateCredentials(client_id, client_secret);
-        if (!client) {
-            sendError(res, 'INVALID_CLIENT', 'Invalid client credentials', 401);
-            return;
-        }
-
-        // Try to verify the token
-        let payload: AccessTokenPayload;
-        try {
-            payload = tokenService.verifyToken<AccessTokenPayload>(token);
-        } catch {
-            res.json({ active: false } satisfies TokenIntrospectionResponse);
-            return;
-        }
-
-        // Check DB — token might be revoked
-        const storedToken = await prisma.oAuthToken.findFirst({
-            where: { accessToken: token },
-        });
-
-        if (!storedToken) {
-            res.json({ active: false } satisfies TokenIntrospectionResponse);
-            return;
-        }
-
-        const response: TokenIntrospectionResponse = {
-            active: true,
-            sub: payload.sub,
-            scope: payload.scopes.join(' '),
-            client_id,
-            token_type: 'Bearer',
-            exp: payload.exp,
-            iat: payload.iat,
-        };
-
-        res.json(response);
-    } catch (error) {
-        next(error);
+  try {
+    const parsed = introspectSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
     }
+
+    const { token, client_id, client_secret } = parsed.data;
+
+    // Require client authentication
+    const client = await clientService.validateCredentials(client_id, client_secret);
+    if (!client) {
+      sendError(res, 'INVALID_CLIENT', 'Invalid client credentials', 401);
+      return;
+    }
+
+    // Try to verify the token
+    let payload: AccessTokenPayload;
+    try {
+      payload = tokenService.verifyToken<AccessTokenPayload>(token);
+    } catch {
+      res.json({ active: false } satisfies TokenIntrospectionResponse);
+      return;
+    }
+
+    // Check DB — token might be revoked
+    const storedToken = await prisma.oAuthToken.findFirst({
+      where: { accessToken: token },
+    });
+
+    if (!storedToken) {
+      res.json({ active: false } satisfies TokenIntrospectionResponse);
+      return;
+    }
+
+    const response: TokenIntrospectionResponse = {
+      active: true,
+      sub: payload.sub,
+      scope: payload.scopes.join(' '),
+      client_id,
+      token_type: 'Bearer',
+      exp: payload.exp,
+      iat: payload.iat,
+    };
+
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
 });
 
 // ================================================
@@ -243,73 +250,76 @@ router.post('/introspect', async (req: Request, res: Response, next: NextFunctio
  *         description: Redirect to post_logout_redirect_uri
  */
 router.get('/logout', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { id_token_hint, post_logout_redirect_uri, state } = req.query as Record<string, string | undefined>;
+  try {
+    const { id_token_hint, post_logout_redirect_uri, state } = req.query as Record<
+      string,
+      string | undefined
+    >;
 
-        let userId: string | undefined;
+    let userId: string | undefined;
 
-        // Extract user from id_token_hint — verify signature (ignoring expiry, as logout may use old tokens)
-        if (id_token_hint) {
-            try {
-                const tokenPayload = jwt.verify(id_token_hint, getPublicKey(), {
-                    algorithms: ['RS256'],
-                    ignoreExpiration: true,
-                }) as { sub?: string };
-                userId = tokenPayload.sub;
-            } catch {
-                // Invalid signature — ignore, proceed with logout without user context
-            }
-        }
-
-        if (userId) {
-            // Find all active tokens for this user
-            const tokens = await prisma.oAuthToken.findMany({
-                where: { userId },
-                select: { accessToken: true, accessTokenExpiresAt: true },
-            });
-
-            // Add to Redis blacklist before deleting from DB
-            const redis = getRedis();
-            await Promise.all(
-                tokens.map(async (t) => {
-                    const ttl = Math.floor((t.accessTokenExpiresAt.getTime() - Date.now()) / 1000);
-                    if (ttl > 0) {
-                        await redis.setex(`blacklist:${t.accessToken}`, ttl, '1');
-                    }
-                })
-            );
-
-            // Revoke all tokens
-            await prisma.oAuthToken.deleteMany({ where: { userId } });
-
-            // End every SSO session belonging to this user (global single sign-out)
-            await sessionService.destroyAllForUser(userId);
-        }
-
-        // Always clear the cookie on this browser, even if we couldn't resolve a userId
-        await sessionService.destroy(req, res);
-
-        // Validate post_logout_redirect_uri against registered client URIs
-        if (post_logout_redirect_uri) {
-            const clientWithUri = await prisma.oAuthClient.findFirst({
-                where: {
-                    redirectUris: { has: post_logout_redirect_uri },
-                    isActive: true,
-                },
-            });
-
-            if (clientWithUri) {
-                const redirectUrl = new URL(post_logout_redirect_uri);
-                if (state) redirectUrl.searchParams.set('state', state);
-                res.redirect(redirectUrl.toString());
-                return;
-            }
-        }
-
-        sendSuccess(res, { logged_out: true });
-    } catch (error) {
-        next(error);
+    // Extract user from id_token_hint — verify signature (ignoring expiry, as logout may use old tokens)
+    if (id_token_hint) {
+      try {
+        const tokenPayload = jwt.verify(id_token_hint, getPublicKey(), {
+          algorithms: ['RS256'],
+          ignoreExpiration: true,
+        }) as { sub?: string };
+        userId = tokenPayload.sub;
+      } catch {
+        // Invalid signature — ignore, proceed with logout without user context
+      }
     }
+
+    if (userId) {
+      // Find all active tokens for this user
+      const tokens = await prisma.oAuthToken.findMany({
+        where: { userId },
+        select: { accessToken: true, accessTokenExpiresAt: true },
+      });
+
+      // Add to Redis blacklist before deleting from DB
+      const redis = getRedis();
+      await Promise.all(
+        tokens.map(async (t) => {
+          const ttl = Math.floor((t.accessTokenExpiresAt.getTime() - Date.now()) / 1000);
+          if (ttl > 0) {
+            await redis.setex(`blacklist:${t.accessToken}`, ttl, '1');
+          }
+        })
+      );
+
+      // Revoke all tokens
+      await prisma.oAuthToken.deleteMany({ where: { userId } });
+
+      // End every SSO session belonging to this user (global single sign-out)
+      await sessionService.destroyAllForUser(userId);
+    }
+
+    // Always clear the cookie on this browser, even if we couldn't resolve a userId
+    await sessionService.destroy(req, res);
+
+    // Validate post_logout_redirect_uri against registered client URIs
+    if (post_logout_redirect_uri) {
+      const clientWithUri = await prisma.oAuthClient.findFirst({
+        where: {
+          redirectUris: { has: post_logout_redirect_uri },
+          isActive: true,
+        },
+      });
+
+      if (clientWithUri) {
+        const redirectUrl = new URL(post_logout_redirect_uri);
+        if (state) redirectUrl.searchParams.set('state', state);
+        res.redirect(redirectUrl.toString());
+        return;
+      }
+    }
+
+    sendSuccess(res, { logged_out: true });
+  } catch (error) {
+    next(error);
+  }
 });
 
 export { router as oidcRoutes };
