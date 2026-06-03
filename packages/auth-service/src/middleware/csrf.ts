@@ -1,14 +1,13 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createLogger, sendError, ErrorCodes } from '@sada/shared';
+import { parseAllowedOrigins, isOriginAllowed } from '../utils/origin.js';
 
 const logger = createLogger('csrf');
 
-const allowedOrigins = (
-  process.env['CORS_ORIGIN']
-    ?.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean) ?? ['http://localhost:3000', 'http://localhost:3002']
-).map((o) => o.replace(/\/$/, ''));
+const allowedOrigins = parseAllowedOrigins(process.env['CORS_ORIGIN'], [
+  'http://localhost:3000',
+  'http://localhost:3002',
+]);
 
 function originOf(url: string): string | null {
   try {
@@ -50,8 +49,7 @@ export function csrfProtect(req: Request, res: Response, next: NextFunction): vo
     return;
   }
 
-  const normalized = origin.replace(/\/$/, '');
-  if (!allowedOrigins.includes(normalized)) {
+  if (!isOriginAllowed(origin, allowedOrigins)) {
     logger.warn('CSRF block: origin not in CORS allow-list', { origin, path: req.path });
     sendError(res, ErrorCodes.FORBIDDEN, 'Origin not allowed', 403);
     return;
