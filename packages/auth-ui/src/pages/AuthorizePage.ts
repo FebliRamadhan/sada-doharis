@@ -3,30 +3,30 @@
  * OAuth consent/authorization screen
  */
 import {
-    endpoints,
-    apiRequest,
-    setStoredUser,
-    SCOPE_DESCRIPTIONS,
-    type User,
-    type OAuthClient,
+  endpoints,
+  apiRequest,
+  setStoredUser,
+  SCOPE_DESCRIPTIONS,
+  type User,
+  type OAuthClient,
 } from '../api';
 import { router, getAppContainer, getQueryParams } from '../router';
 
 interface OAuthParams {
-    clientId: string;
-    redirectUri: string;
-    scope: string;
-    state: string;
-    responseType: string;
-    codeChallenge?: string;
-    codeChallengeMethod?: string;
+  clientId: string;
+  redirectUri: string;
+  scope: string;
+  state: string;
+  responseType: string;
+  codeChallenge?: string;
+  codeChallengeMethod?: string;
 }
 
 export async function AuthorizePage(): Promise<void> {
-    const app = getAppContainer();
+  const app = getAppContainer();
 
-    // Initial loading state
-    app.innerHTML = `
+  // Initial loading state
+  app.innerHTML = `
         <div class="auth-card">
             <!-- Mobile header -->
             <div class="mobile-brand-header" aria-hidden="true">
@@ -67,65 +67,67 @@ export async function AuthorizePage(): Promise<void> {
         </div>
     `;
 
-    await init();
+  await init();
 }
 
 function getOAuthParams(): OAuthParams | null {
-    const params = getQueryParams();
-    const clientId = params.get('client_id');
-    const redirectUri = params.get('redirect_uri');
+  const params = getQueryParams();
+  const clientId = params.get('client_id');
+  const redirectUri = params.get('redirect_uri');
 
-    if (!clientId || !redirectUri) {
-        return null;
-    }
+  if (!clientId || !redirectUri) {
+    return null;
+  }
 
-    return {
-        clientId,
-        redirectUri,
-        scope: params.get('scope') || 'openid profile',
-        state: params.get('state') || '',
-        responseType: params.get('response_type') || 'code',
-        codeChallenge: params.get('code_challenge') || undefined,
-        codeChallengeMethod: params.get('code_challenge_method') || undefined,
-    };
+  return {
+    clientId,
+    redirectUri,
+    scope: params.get('scope') || 'openid profile',
+    state: params.get('state') || '',
+    responseType: params.get('response_type') || 'code',
+    codeChallenge: params.get('code_challenge') || undefined,
+    codeChallengeMethod: params.get('code_challenge_method') || undefined,
+  };
 }
 
 function showError(message: string): void {
-    const loadingState = document.getElementById('loading-state');
-    const authContent = document.getElementById('auth-content');
-    const errorState = document.getElementById('error-state');
-    const errorMessage = document.getElementById('error-message');
+  const loadingState = document.getElementById('loading-state');
+  const authContent = document.getElementById('auth-content');
+  const errorState = document.getElementById('error-state');
+  const errorMessage = document.getElementById('error-message');
 
-    if (loadingState) loadingState.style.display = 'none';
-    if (authContent) authContent.style.display = 'none';
-    if (errorState) errorState.style.display = 'flex';
-    if (errorMessage) errorMessage.textContent = message;
+  if (loadingState) loadingState.style.display = 'none';
+  if (authContent) authContent.style.display = 'none';
+  if (errorState) errorState.style.display = 'flex';
+  if (errorMessage) errorMessage.textContent = message;
 }
 
 function showAuthContent(): void {
-    const loadingState = document.getElementById('loading-state');
-    const authContent = document.getElementById('auth-content');
-    const errorState = document.getElementById('error-state');
+  const loadingState = document.getElementById('loading-state');
+  const authContent = document.getElementById('auth-content');
+  const errorState = document.getElementById('error-state');
 
-    if (loadingState) loadingState.style.display = 'none';
-    if (authContent) authContent.style.display = 'block';
-    if (errorState) errorState.style.display = 'none';
+  if (loadingState) loadingState.style.display = 'none';
+  if (authContent) authContent.style.display = 'block';
+  if (errorState) errorState.style.display = 'none';
 }
 
 function renderAuthContent(user: User, client: OAuthClient, oauthParams: OAuthParams): void {
-    const authContent = document.getElementById('auth-content');
-    if (!authContent) return;
+  const authContent = document.getElementById('auth-content');
+  if (!authContent) return;
 
-    const scopes = oauthParams.scope.split(' ');
-    const defaultIconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+  const scopes = oauthParams.scope.split(' ');
+  const defaultIconSvg =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 
-    const scopeItems = scopes.map(scope => {
-        const scopeInfo = SCOPE_DESCRIPTIONS[scope] || {
-            name: scope,
-            description: `Access to ${scope}`,
-            iconSvg: defaultIconSvg,
-        };
-        return `
+  const scopeItems = scopes
+    .map((scope) => {
+      const scopeInfo = SCOPE_DESCRIPTIONS[scope] || {
+        name: scope,
+        description: `Access to ${scope}`,
+        iconSvg: defaultIconSvg,
+      };
+      return `
             <li class="scope-item">
                 <div class="scope-icon">${scopeInfo.iconSvg}</div>
                 <div class="scope-info">
@@ -134,17 +136,18 @@ function renderAuthContent(user: User, client: OAuthClient, oauthParams: OAuthPa
                 </div>
             </li>
         `;
-    }).join('');
+    })
+    .join('');
 
-    let appDomain = oauthParams.redirectUri;
-    try {
-        const url = new URL(oauthParams.redirectUri);
-        appDomain = url.hostname;
-    } catch {
-        // Ignore
-    }
+  let appDomain = oauthParams.redirectUri;
+  try {
+    const url = new URL(oauthParams.redirectUri);
+    appDomain = url.hostname;
+  } catch {
+    // Ignore
+  }
 
-    authContent.innerHTML = `
+  authContent.innerHTML = `
         <!-- Current User -->
         <div class="user-card">
             <div class="user-avatar">${user.name.charAt(0).toUpperCase()}</div>
@@ -190,127 +193,130 @@ function renderAuthContent(user: User, client: OAuthClient, oauthParams: OAuthPa
         </div>
     `;
 
-    // Attach event handlers
-    document.getElementById('btn-deny')?.addEventListener('click', () => handleDeny(oauthParams));
-    document.getElementById('btn-allow')?.addEventListener('click', () => handleAllow(oauthParams));
+  // Attach event handlers
+  document.getElementById('btn-deny')?.addEventListener('click', () => handleDeny(oauthParams));
+  document.getElementById('btn-allow')?.addEventListener('click', () => handleAllow(oauthParams));
 
-    showAuthContent();
+  showAuthContent();
 }
 
 function handleDeny(oauthParams: OAuthParams): void {
-    const redirectUrl = new URL(oauthParams.redirectUri);
-    redirectUrl.searchParams.set('error', 'access_denied');
-    redirectUrl.searchParams.set('error_description', 'User denied access');
-    if (oauthParams.state) {
-        redirectUrl.searchParams.set('state', oauthParams.state);
-    }
-    window.location.href = redirectUrl.toString();
+  const redirectUrl = new URL(oauthParams.redirectUri);
+  redirectUrl.searchParams.set('error', 'access_denied');
+  redirectUrl.searchParams.set('error_description', 'User denied access');
+  if (oauthParams.state) {
+    redirectUrl.searchParams.set('state', oauthParams.state);
+  }
+  window.location.href = redirectUrl.toString();
 }
 
 async function handleAllow(oauthParams: OAuthParams): Promise<void> {
-    const btnAllow = document.getElementById('btn-allow') as HTMLButtonElement;
-    const btnDeny = document.getElementById('btn-deny') as HTMLButtonElement;
+  const btnAllow = document.getElementById('btn-allow') as HTMLButtonElement;
+  const btnDeny = document.getElementById('btn-deny') as HTMLButtonElement;
 
-    if (btnAllow) {
-        btnAllow.disabled = true;
-        btnAllow.innerHTML = '<div class="spinner"></div> Memproses...';
+  if (btnAllow) {
+    btnAllow.disabled = true;
+    btnAllow.innerHTML = '<div class="spinner"></div> Memproses...';
+  }
+  if (btnDeny) btnDeny.disabled = true;
+
+  try {
+    const result = await apiRequest<{ redirect_url: string }>(
+      buildAuthorizeQuery(oauthParams, true)
+    );
+
+    if (result.success && result.data?.redirect_url) {
+      window.location.href = result.data.redirect_url;
+    } else {
+      throw new Error(result.error || 'Otorisasi gagal');
     }
-    if (btnDeny) btnDeny.disabled = true;
-
-    try {
-        const result = await apiRequest<{ redirect_url: string }>(
-            buildAuthorizeQuery(oauthParams, true)
-        );
-
-        if (result.success && result.data?.redirect_url) {
-            window.location.href = result.data.redirect_url;
-        } else {
-            throw new Error(result.error || 'Otorisasi gagal');
-        }
-    } catch {
-        showError('Gagal memproses otorisasi. Silakan coba kembali.');
-        if (btnAllow) {
-            btnAllow.disabled = false;
-            btnAllow.innerHTML = `
+  } catch {
+    showError('Gagal memproses otorisasi. Silakan coba kembali.');
+    if (btnAllow) {
+      btnAllow.disabled = false;
+      btnAllow.innerHTML = `
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                      stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <polyline points="20 6 9 17 4 12"/>
                 </svg>
                 Izinkan`;
-        }
-        if (btnDeny) btnDeny.disabled = false;
     }
+    if (btnDeny) btnDeny.disabled = false;
+  }
 }
 
 function buildAuthorizeQuery(oauthParams: OAuthParams, withConsent = false): string {
-    const params = new URLSearchParams({
-        response_type: oauthParams.responseType,
-        client_id: oauthParams.clientId,
-        redirect_uri: oauthParams.redirectUri,
-        scope: oauthParams.scope,
-    });
-    if (oauthParams.state) params.set('state', oauthParams.state);
-    if (oauthParams.codeChallenge) params.set('code_challenge', oauthParams.codeChallenge);
-    if (oauthParams.codeChallengeMethod) params.set('code_challenge_method', oauthParams.codeChallengeMethod);
-    if (withConsent) params.set('consent', 'approved');
-    return `${endpoints.authorize}?${params.toString()}`;
+  const params = new URLSearchParams({
+    response_type: oauthParams.responseType,
+    client_id: oauthParams.clientId,
+    redirect_uri: oauthParams.redirectUri,
+    scope: oauthParams.scope,
+  });
+  if (oauthParams.state) params.set('state', oauthParams.state);
+  if (oauthParams.codeChallenge) params.set('code_challenge', oauthParams.codeChallenge);
+  if (oauthParams.codeChallengeMethod)
+    params.set('code_challenge_method', oauthParams.codeChallengeMethod);
+  if (withConsent) params.set('consent', 'approved');
+  return `${endpoints.authorize}?${params.toString()}`;
 }
 
 async function init(): Promise<void> {
-    const oauthParams = getOAuthParams();
-    if (!oauthParams) {
-        showError('Permintaan otorisasi tidak valid. Parameter yang diperlukan tidak ditemukan.');
-        return;
+  const oauthParams = getOAuthParams();
+  if (!oauthParams) {
+    showError('Permintaan otorisasi tidak valid. Parameter yang diperlukan tidak ditemukan.');
+    return;
+  }
+
+  // Resolve the user via /auth/me — works whether the caller has a Bearer
+  // token in sessionStorage (same tab) or just the SSO cookie (new tab on
+  // a second app). If neither works, fall through to the login page.
+  try {
+    const meResult = await apiRequest<User>(endpoints.me);
+
+    if (!meResult.success || !meResult.data) {
+      const returnUrl = window.location.href;
+      router.navigate(`/login?return_url=${encodeURIComponent(returnUrl)}`);
+      return;
     }
 
-    // Resolve the user via /auth/me — works whether the caller has a Bearer
-    // token in sessionStorage (same tab) or just the SSO cookie (new tab on
-    // a second app). If neither works, fall through to the login page.
-    try {
-        const meResult = await apiRequest<User>(endpoints.me);
+    const user = meResult.data;
+    setStoredUser(user);
 
-        if (!meResult.success || !meResult.data) {
-            const returnUrl = window.location.href;
-            router.navigate(`/login?return_url=${encodeURIComponent(returnUrl)}`);
-            return;
-        }
+    // Silent authorize — if consent is already on record for the requested
+    // scopes, the backend returns redirect_url and we skip the consent UI.
+    const silent = await apiRequest<{ redirect_url?: string; needs_consent?: boolean }>(
+      buildAuthorizeQuery(oauthParams)
+    );
 
-        const user = meResult.data;
-        setStoredUser(user);
-
-        // Silent authorize — if consent is already on record for the requested
-        // scopes, the backend returns redirect_url and we skip the consent UI.
-        const silent = await apiRequest<{ redirect_url?: string; needs_consent?: boolean }>(
-            buildAuthorizeQuery(oauthParams)
-        );
-
-        if (silent.success && silent.data?.redirect_url) {
-            window.location.href = silent.data.redirect_url;
-            return;
-        }
-
-        const clientResult = await apiRequest<OAuthClient>(
-            `${endpoints.clients}/${oauthParams.clientId}`
-        );
-
-        if (!clientResult.success || !clientResult.data) {
-            showError('Aplikasi tidak dikenal. Aplikasi yang meminta akses belum terdaftar.');
-            return;
-        }
-
-        const client = clientResult.data;
-
-        const isValidRedirect = client.redirectUris.some(
-            (uri) => oauthParams.redirectUri.startsWith(uri)
-        );
-
-        if (!isValidRedirect) {
-            showError('Redirect URI tidak valid. Aplikasi ini tidak memiliki izin untuk alamat pengalihan tersebut.');
-            return;
-        }
-
-        renderAuthContent(user, client, oauthParams);
-    } catch {
-        showError('Gagal memuat detail otorisasi. Silakan coba kembali.');
+    if (silent.success && silent.data?.redirect_url) {
+      window.location.href = silent.data.redirect_url;
+      return;
     }
+
+    const clientResult = await apiRequest<OAuthClient>(
+      `${endpoints.clients}/${oauthParams.clientId}`
+    );
+
+    if (!clientResult.success || !clientResult.data) {
+      showError('Aplikasi tidak dikenal. Aplikasi yang meminta akses belum terdaftar.');
+      return;
+    }
+
+    const client = clientResult.data;
+
+    const isValidRedirect = client.redirectUris.some((uri) =>
+      oauthParams.redirectUri.startsWith(uri)
+    );
+
+    if (!isValidRedirect) {
+      showError(
+        'Redirect URI tidak valid. Aplikasi ini tidak memiliki izin untuk alamat pengalihan tersebut.'
+      );
+      return;
+    }
+
+    renderAuthContent(user, client, oauthParams);
+  } catch {
+    showError('Gagal memuat detail otorisasi. Silakan coba kembali.');
+  }
 }

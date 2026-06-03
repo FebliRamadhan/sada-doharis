@@ -2,19 +2,13 @@
  * Login Page Component
  * Only Email + SSO tabs (Internal tab removed)
  */
-import {
-    endpoints,
-    apiRequest,
-    setStoredToken,
-    setStoredUser,
-    type AuthResponse,
-} from '../api';
+import { endpoints, apiRequest, setStoredToken, setStoredUser, type AuthResponse } from '../api';
 import { router, getAppContainer, getQueryParams } from '../router';
 
 export async function LoginPage(): Promise<void> {
-    const app = getAppContainer();
+  const app = getAppContainer();
 
-    app.innerHTML = `
+  app.innerHTML = `
         <div class="auth-card">
             <!-- Mobile-only ministry header -->
             <div class="mobile-brand-header" aria-hidden="true">
@@ -149,111 +143,111 @@ export async function LoginPage(): Promise<void> {
         </div>
     `;
 
-    initTabs();
-    initLoginForm();
-    checkUrlError();
+  initTabs();
+  initLoginForm();
+  checkUrlError();
 }
 
 function initTabs(): void {
-    const tabButtons = document.querySelectorAll('.tab-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const tabContents = document.querySelectorAll('.tab-content');
 
-    tabButtons.forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const tabId = (btn as HTMLElement).dataset.tab;
-            if (!tabId) return;
+  tabButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tabId = (btn as HTMLElement).dataset.tab;
+      if (!tabId) return;
 
-            tabButtons.forEach((b) => b.classList.remove('active'));
-            tabContents.forEach((c) => c.classList.remove('active'));
+      tabButtons.forEach((b) => b.classList.remove('active'));
+      tabContents.forEach((c) => c.classList.remove('active'));
 
-            btn.classList.add('active');
-            document.getElementById(`tab-${tabId}`)?.classList.add('active');
-        });
+      btn.classList.add('active');
+      document.getElementById(`tab-${tabId}`)?.classList.add('active');
     });
+  });
 }
 
 function initLoginForm(): void {
-    const loginForm = document.getElementById('login-form') as HTMLFormElement;
-    if (loginForm) {
-        loginForm.addEventListener('submit', handleEmailLogin);
-    }
+  const loginForm = document.getElementById('login-form') as HTMLFormElement;
+  if (loginForm) {
+    loginForm.addEventListener('submit', handleEmailLogin);
+  }
 }
 
 function checkUrlError(): void {
-    const params = getQueryParams();
-    const error = params.get('error');
-    if (error) {
-        showError(decodeURIComponent(error));
-    }
+  const params = getQueryParams();
+  const error = params.get('error');
+  if (error) {
+    showError(decodeURIComponent(error));
+  }
 }
 
 function showError(message: string): void {
-    const errorAlert = document.getElementById('error-alert');
-    const errorMessage = document.getElementById('error-message');
-    if (errorAlert && errorMessage) {
-        errorMessage.textContent = message;
-        errorAlert.style.display = 'flex';
-    }
+  const errorAlert = document.getElementById('error-alert');
+  const errorMessage = document.getElementById('error-message');
+  if (errorAlert && errorMessage) {
+    errorMessage.textContent = message;
+    errorAlert.style.display = 'flex';
+  }
 }
 
 function hideError(): void {
-    const errorAlert = document.getElementById('error-alert');
-    if (errorAlert) {
-        errorAlert.style.display = 'none';
-    }
+  const errorAlert = document.getElementById('error-alert');
+  if (errorAlert) {
+    errorAlert.style.display = 'none';
+  }
 }
 
 function handleLoginSuccess(data: AuthResponse['data']): void {
-    if (!data) return;
+  if (!data) return;
 
-    // After apiRequest unwraps the backend envelope, data = { access_token, user, ... }
-    const d = data as unknown as Record<string, unknown>;
-    const token = String(d['access_token'] ?? d['accessToken'] ?? '');
-    const user = d['user'] as import('../api').User | undefined;
+  // After apiRequest unwraps the backend envelope, data = { access_token, user, ... }
+  const d = data as unknown as Record<string, unknown>;
+  const token = String(d['access_token'] ?? d['accessToken'] ?? '');
+  const user = d['user'] as import('../api').User | undefined;
 
-    if (!token || !user) return;
+  if (!token || !user) return;
 
-    setStoredToken(token);
-    setStoredUser(user);
+  setStoredToken(token);
+  setStoredUser(user);
 
-    // Check if there's a return URL for OAuth flow
-    const params = getQueryParams();
-    const returnUrl = params.get('return_url');
+  // Check if there's a return URL for OAuth flow
+  const params = getQueryParams();
+  const returnUrl = params.get('return_url');
 
-    if (returnUrl) {
-        window.location.href = returnUrl;
-    } else {
-        router.navigate('/');
-    }
+  if (returnUrl) {
+    window.location.href = returnUrl;
+  } else {
+    router.navigate('/');
+  }
 }
 
 async function handleEmailLogin(e: Event): Promise<void> {
-    e.preventDefault();
-    hideError();
+  e.preventDefault();
+  hideError();
 
-    const email = (document.getElementById('email') as HTMLInputElement).value;
-    const password = (document.getElementById('password') as HTMLInputElement).value;
-    const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
+  const email = (document.getElementById('email') as HTMLInputElement).value;
+  const password = (document.getElementById('password') as HTMLInputElement).value;
+  const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
 
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<div class="spinner"></div> Sedang masuk...';
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<div class="spinner"></div> Sedang masuk...';
 
-    try {
-        const result = await apiRequest<AuthResponse['data']>(endpoints.login, {
-            method: 'POST',
-            body: JSON.stringify({ email, password }),
-        });
+  try {
+    const result = await apiRequest<AuthResponse['data']>(endpoints.login, {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
 
-        if (result.success && result.data) {
-            handleLoginSuccess(result.data);
-        } else {
-            showError(result.error || 'Email atau kata sandi tidak valid.');
-        }
-    } catch {
-        showError('Terjadi kesalahan jaringan. Silakan coba kembali.');
-    } finally {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = `
+    if (result.success && result.data) {
+      handleLoginSuccess(result.data);
+    } else {
+      showError(result.error || 'Email atau kata sandi tidak valid.');
+    }
+  } catch {
+    showError('Terjadi kesalahan jaringan. Silakan coba kembali.');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = `
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
@@ -261,5 +255,5 @@ async function handleEmailLogin(e: Event): Promise<void> {
                 <line x1="15" y1="12" x2="3" y2="12"/>
             </svg>
             Masuk`;
-    }
+  }
 }

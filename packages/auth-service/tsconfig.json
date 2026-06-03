@@ -1,17 +1,10 @@
 {
-    "extends": "../../tsconfig.base.json",
-    "compilerOptions": {
-        "outDir": "./dist",
-        "rootDir": "./src",
-        "skipLibCheck": true
-    },
-    "include": [
-        "src/**/*"
-    ],
-    "exclude": [
-        "node_modules",
-        "dist",
-        "src/**/*.test.ts",
-        "src/__tests__/**"
-    ]
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/__tests__/**"]
 }

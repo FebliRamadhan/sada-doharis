@@ -28,17 +28,19 @@ const PORT = process.env['PORT'] ?? 3000;
 // Security middlewares
 const IS_PROD = process.env['NODE_ENV'] === 'production';
 app.use(
-    helmet({
-        hsts: IS_PROD ? { maxAge: 63072000, includeSubDomains: true, preload: true } : false,
-        referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-        crossOriginResourcePolicy: { policy: 'same-site' },
-        contentSecurityPolicy: false,
-    }),
+  helmet({
+    hsts: IS_PROD ? { maxAge: 63072000, includeSubDomains: true, preload: true } : false,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    crossOriginResourcePolicy: { policy: 'same-site' },
+    contentSecurityPolicy: false,
+  })
 );
-app.use(cors({
+app.use(
+  cors({
     origin: process.env['CORS_ORIGIN']?.split(',') ?? ['http://localhost:3002'],
     credentials: true,
-}));
+  })
+);
 
 // Request parsing
 app.use(express.json({ limit: '10mb' }));
@@ -47,28 +49,30 @@ app.use(compression());
 
 // Logging & request ID
 app.use(requestId);
-app.use(morgan('combined', {
-    stream: { write: (message) => logger.info(message.trim()) }
-}));
+app.use(
+  morgan('combined', {
+    stream: { write: (message) => logger.info(message.trim()) },
+  })
+);
 
 // Global rate limiting
 app.use(rateLimiter);
 
 // Stricter rate limiter for authentication endpoints
 const authRateLimiter = rateLimit({
-    windowMs: parseInt(process.env['AUTH_RATE_LIMIT_WINDOW_MS'] ?? '60000', 10),
-    max: parseInt(process.env['AUTH_RATE_LIMIT_MAX_REQUESTS'] ?? '5', 10),
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-        success: false,
-        error: {
-            code: 'RATE_LIMIT_EXCEEDED',
-            message: 'Too many authentication attempts, please try again later.',
-        },
+  windowMs: parseInt(process.env['AUTH_RATE_LIMIT_WINDOW_MS'] ?? '60000', 10),
+  max: parseInt(process.env['AUTH_RATE_LIMIT_MAX_REQUESTS'] ?? '5', 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many authentication attempts, please try again later.',
     },
-    keyGenerator: (req) =>
-        req.headers['x-forwarded-for'] as string ?? req.socket.remoteAddress ?? 'unknown',
+  },
+  keyGenerator: (req) =>
+    (req.headers['x-forwarded-for'] as string) ?? req.socket.remoteAddress ?? 'unknown',
 });
 
 app.use('/auth/login', authRateLimiter);
@@ -77,19 +81,19 @@ app.use('/auth/register', authRateLimiter);
 
 // Strict rate limiter for OAuth token endpoint (brute force / code enumeration)
 const tokenRateLimiter = rateLimit({
-    windowMs: 60000,
-    max: parseInt(process.env['TOKEN_RATE_LIMIT_MAX_REQUESTS'] ?? '10', 10),
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-        success: false,
-        error: {
-            code: 'RATE_LIMIT_EXCEEDED',
-            message: 'Too many token requests, please try again later.',
-        },
+  windowMs: 60000,
+  max: parseInt(process.env['TOKEN_RATE_LIMIT_MAX_REQUESTS'] ?? '10', 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many token requests, please try again later.',
     },
-    keyGenerator: (req) =>
-        req.headers['x-forwarded-for'] as string ?? req.socket.remoteAddress ?? 'unknown',
+  },
+  keyGenerator: (req) =>
+    (req.headers['x-forwarded-for'] as string) ?? req.socket.remoteAddress ?? 'unknown',
 });
 app.use('/api/oauth/token', tokenRateLimiter);
 app.use('/api/oauth/revoke', tokenRateLimiter);
@@ -104,31 +108,31 @@ app.use(errorHandler);
 
 // Graceful shutdown
 async function shutdown(): Promise<void> {
-    logger.info('Shutting down gateway...');
-    await disconnectRedis();
-    process.exit(0);
+  logger.info('Shutting down gateway...');
+  await disconnectRedis();
+  process.exit(0);
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 // Start server
 async function start(): Promise<void> {
-    await connectRedis();
-    // Pre-fetch JWKS for RS256 verification (retry if auth-service not ready yet)
-    try {
-        await fetchJWKS();
-    } catch {
-        logger.warn('JWKS pre-fetch failed — will retry on first request');
-    }
-    app.listen(PORT, () => {
-        logger.info(`API Gateway running on port ${PORT}`);
-        logger.info(`Health check: http://localhost:${PORT}/health`);
-    });
+  await connectRedis();
+  // Pre-fetch JWKS for RS256 verification (retry if auth-service not ready yet)
+  try {
+    await fetchJWKS();
+  } catch {
+    logger.warn('JWKS pre-fetch failed — will retry on first request');
+  }
+  app.listen(PORT, () => {
+    logger.info(`API Gateway running on port ${PORT}`);
+    logger.info(`Health check: http://localhost:${PORT}/health`);
+  });
 }
 
 start().catch((error) => {
-    logger.error('Failed to start gateway', { error });
-    process.exit(1);
+  logger.error('Failed to start gateway', { error });
+  process.exit(1);
 });
 
 export { app };

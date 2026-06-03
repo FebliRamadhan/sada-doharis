@@ -8,47 +8,69 @@ const AUTH_SERVICE_URL = process.env['AUTH_SERVICE_URL'] ?? 'http://localhost:30
 
 // Create proxy options
 const createProxy = (target: string, pathRewrite?: Record<string, string>): Options => ({
-    target,
-    changeOrigin: true,
-    pathRewrite,
-    on: {
-        proxyReq: (proxyReq, req) => {
-            // Forward request ID
-            const requestId = (req as any).res?.locals?.['requestId'];
-            if (requestId) {
-                proxyReq.setHeader('X-Request-ID', requestId);
-            }
+  target,
+  changeOrigin: true,
+  pathRewrite,
+  on: {
+    proxyReq: (proxyReq, req) => {
+      // Forward request ID
+      const requestId = (req as any).res?.locals?.['requestId'];
+      if (requestId) {
+        proxyReq.setHeader('X-Request-ID', requestId);
+      }
 
-            // Forward user info from JWT
-            const user = (req as any).user;
-            if (user) {
-                proxyReq.setHeader('X-User-ID', user.sub);
-                proxyReq.setHeader('X-User-Type', user.type);
-                proxyReq.setHeader('X-User-Scopes', user.scopes?.join(',') ?? '');
-            }
-        },
+      // Forward user info from JWT
+      const user = (req as any).user;
+      if (user) {
+        proxyReq.setHeader('X-User-ID', user.sub);
+        proxyReq.setHeader('X-User-Type', user.type);
+        proxyReq.setHeader('X-User-Scopes', user.scopes?.join(',') ?? '');
+      }
     },
+  },
 });
 
 // OIDC discovery endpoints (public, no auth required)
-router.use('/.well-known', createProxyMiddleware(createProxy(AUTH_SERVICE_URL, {
-    '^/api/.well-known': '/.well-known',
-})));
+router.use(
+  '/.well-known',
+  createProxyMiddleware(
+    createProxy(AUTH_SERVICE_URL, {
+      '^/api/.well-known': '/.well-known',
+    })
+  )
+);
 
 // OAuth / OIDC endpoints (public — auth handled inside auth-service)
-router.use('/oauth', createProxyMiddleware(createProxy(AUTH_SERVICE_URL, {
-    '^/api/oauth': '/oauth',
-})));
+router.use(
+  '/oauth',
+  createProxyMiddleware(
+    createProxy(AUTH_SERVICE_URL, {
+      '^/api/oauth': '/oauth',
+    })
+  )
+);
 
 // User management (authenticated)
-router.use('/users', authMiddleware, createProxyMiddleware(createProxy(AUTH_SERVICE_URL, {
-    '^/api/users': '/users',
-})));
+router.use(
+  '/users',
+  authMiddleware,
+  createProxyMiddleware(
+    createProxy(AUTH_SERVICE_URL, {
+      '^/api/users': '/users',
+    })
+  )
+);
 
 // Client management (authenticated)
-router.use('/clients', authMiddleware, createProxyMiddleware(createProxy(AUTH_SERVICE_URL, {
-    '^/api/clients': '/clients',
-})));
+router.use(
+  '/clients',
+  authMiddleware,
+  createProxyMiddleware(
+    createProxy(AUTH_SERVICE_URL, {
+      '^/api/clients': '/clients',
+    })
+  )
+);
 
 // Add more service proxies here as needed
 // Example:

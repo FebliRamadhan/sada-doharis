@@ -16,12 +16,12 @@ const router = Router();
  *         description: Service is alive
  */
 router.get('/', (_req, res) => {
-    res.json({
-        status: 'healthy',
-        service: 'auth-service',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-    });
+  res.json({
+    status: 'healthy',
+    service: 'auth-service',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
 });
 
 /**
@@ -38,21 +38,18 @@ router.get('/', (_req, res) => {
  *         description: One or more dependencies are unreachable
  */
 router.get('/ready', async (_req, res) => {
-    const [databases, redis] = await Promise.all([
-        checkAllDatabasesHealth(),
-        checkRedisHealth(),
-    ]);
+  const [databases, redis] = await Promise.all([checkAllDatabasesHealth(), checkRedisHealth()]);
 
-    const dbOk = databases.every((d) => d.connected);
-    const ready = dbOk && redis.connected;
+  const dbOk = databases.every((d) => d.connected);
+  const ready = dbOk && redis.connected;
 
-    res.status(ready ? 200 : 503).json({
-        status: ready ? 'ready' : 'unavailable',
-        checks: {
-            databases,
-            redis,
-        },
-    });
+  res.status(ready ? 200 : 503).json({
+    status: ready ? 'ready' : 'unavailable',
+    checks: {
+      databases,
+      redis,
+    },
+  });
 });
 
 export { router as healthRoutes };
