@@ -12,6 +12,10 @@ on:
         required: false
         default: ''
 
+# Opt JS-based actions (checkout) into Node.js 24 — Node 20 is deprecated
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   deploy:
     name: Deploy to production

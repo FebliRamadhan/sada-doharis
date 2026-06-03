@@ -9,6 +9,10 @@ concurrency:
   group: preview-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# Opt JS-based actions (checkout) into Node.js 24 — Node 20 is deprecated
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   build-images:
     name: Build preview images

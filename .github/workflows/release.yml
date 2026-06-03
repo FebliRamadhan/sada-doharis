@@ -10,6 +10,10 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# Opt JS-based actions (checkout) into Node.js 24 — Node 20 is deprecated
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   build-and-push:
     name: Build & push ${{ matrix.target.name }}
