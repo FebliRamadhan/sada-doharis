@@ -8,6 +8,7 @@ import { prisma } from '../config/database.js';
 import { getRedis } from '../config/redis.js';
 import { sendSuccess, sendError, ValidationError, ErrorCodes } from '@sada/shared';
 import { csrfProtect } from '../middleware/csrf.js';
+import { parseAllowedOrigins, isOriginAllowed } from '../utils/origin.js';
 
 // Consent TTL matches the refresh token session lifetime
 const CONSENT_TTL_SECONDS = (() => {
@@ -149,9 +150,8 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
               }
             })()
           : null);
-      const allowed =
-        process.env['CORS_ORIGIN']?.split(',').map((s) => s.trim().replace(/\/$/, '')) ?? [];
-      if (!origin || !allowed.includes(origin.replace(/\/$/, ''))) {
+      const allowed = parseAllowedOrigins(process.env['CORS_ORIGIN']);
+      if (!isOriginAllowed(origin, allowed)) {
         sendError(res, ErrorCodes.FORBIDDEN, 'Consent must originate from the auth UI', 403);
         return;
       }

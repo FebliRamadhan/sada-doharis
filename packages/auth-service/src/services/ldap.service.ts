@@ -16,10 +16,8 @@ const LDAP_SEARCH_FILTER = process.env['LDAP_SEARCH_FILTER'] ?? '(uid={{username
 function escapeLdapFilter(input: string): string {
   // NUL is a required LDAP filter special char (RFC 4515); the control-char rule is intentional here
   // eslint-disable-next-line no-control-regex
-  return input.replace(
-    /[\x00*()\\]/g,
-    (char) => `\\${char.charCodeAt(0).toString(16).padStart(2, '0')}`
-  );
+  const special = /[\x00*()\\]/g;
+  return input.replace(special, (char) => `\\${char.charCodeAt(0).toString(16).padStart(2, '0')}`);
 }
 
 export const ldapService = {

@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import { createLogger } from '@sada/shared';
 
 import { validateEnv } from './config/env.js';
+import { parseAllowedOrigins, isOriginAllowed } from './utils/origin.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestId } from './middleware/requestId.js';
 import { oauthRoutes } from './routes/oauth.routes.js';
@@ -51,12 +52,15 @@ app.use(
     contentSecurityPolicy: false,
   })
 );
+const corsAllowedOrigins = parseAllowedOrigins(process.env['CORS_ORIGIN'], [
+  'http://localhost:3000',
+  'http://localhost:3002',
+]);
 app.use(
   cors({
-    origin: process.env['CORS_ORIGIN']?.split(',') ?? [
-      'http://localhost:3000',
-      'http://localhost:3002',
-    ],
+    // Function form so wildcard patterns (e.g. https://*.menpan.go.id) are honored.
+    // No Origin header (server-to-server, curl) is allowed through.
+    origin: (origin, cb) => cb(null, !origin || isOriginAllowed(origin, corsAllowedOrigins)),
     credentials: true,
   })
 );
