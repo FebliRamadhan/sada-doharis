@@ -623,7 +623,7 @@ function closeModal(): void {
 // ─── Create Client ────────────────────────────────────────────────────────────
 
 const ALL_GRANTS = ['authorization_code', 'client_credentials', 'refresh_token'];
-const ALL_SCOPES = ['openid', 'profile', 'email', 'offline_access', 'read', 'write', 'internal', 'government'];
+const ALL_SCOPES = ['openid', 'profile', 'email', 'offline_access', 'read', 'write', 'internal', 'government', 'pegawai'];
 
 function checkboxGroup(items: string[], name: string, checked: string[]): string {
     return `<div style="display:flex;flex-wrap:wrap;column-gap:1rem;row-gap:0.625rem">

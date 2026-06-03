@@ -203,6 +203,8 @@ export interface OIDCUserInfoResponse {
     email?: string;
     email_verified?: boolean;
     preferred_username?: string;
+    nip?: string;
+    fullname?: string;
 }
 
 export interface TokenIntrospectionResponse {

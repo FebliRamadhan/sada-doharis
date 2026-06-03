@@ -6,6 +6,7 @@ import { prisma } from '../config/database.js';
 import { tokenService } from '../services/token.service.js';
 import { clientService } from '../services/client.service.js';
 import { sessionService } from '../services/session.service.js';
+import { pegawaiService } from '../services/pegawai.service.js';
 import { getJWKS, getPublicKey } from '../config/keys.js';
 import { getRedis } from '../config/redis.js';
 import {
@@ -77,7 +78,7 @@ router.get('/userinfo', async (req: Request, res: Response, next: NextFunction) 
 
         const user = await prisma.user.findUnique({
             where: { id: payload.sub },
-            select: { id: true, email: true, name: true, isActive: true },
+            select: { id: true, email: true, name: true, isActive: true, providerId: true, userType: true },
         });
 
         if (!user || !user.isActive) {
@@ -93,7 +94,26 @@ router.get('/userinfo', async (req: Request, res: Response, next: NextFunction) 
 
         if (payload.scopes.includes('email')) {
             response.email = user.email;
-            response.email_verified = false; // Extend when email verification is implemented
+            // Internal employees authenticate via LDAP/company directory → email trusted
+            response.email_verified = user.userType === 'INTERNAL';
+        }
+
+        // Employee claims — only for internal users with the `pegawai` scope.
+        // NIP is already persisted in user.providerId; nama_cetak comes from MySQL.
+        if (payload.scopes.includes('pegawai') && user.userType === 'INTERNAL') {
+            response.nip = user.providerId ?? undefined;
+
+            if (pegawaiService.isConfigured() && user.providerId) {
+                try {
+                    const pegawai = await pegawaiService.getByNip(user.providerId);
+                    if (pegawai) {
+                        response.nip = pegawai.nip;
+                        response.fullname = pegawai.nama_cetak;
+                    }
+                } catch {
+                    // MySQL unavailable — keep NIP from providerId, skip fullname
+                }
+            }
         }
 
         res.json(response);

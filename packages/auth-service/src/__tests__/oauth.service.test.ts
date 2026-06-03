@@ -48,6 +48,9 @@ vi.mock('../config/database.js', () => ({
             create: vi.fn(),
             delete: vi.fn(),
         },
+        user: {
+            findUnique: vi.fn(() => ({ userType: 'INTERNAL' })),
+        },
     },
 }));
 
@@ -163,6 +166,106 @@ describe('oauthService', () => {
             });
 
             expect(result).toBeDefined();
+        });
+
+        it('drops `internal`/`government` scopes for non-matching user types', async () => {
+            const { prisma } = await import('../config/database.js');
+            const { oauthService } = await import('../services/oauth.service.js');
+
+            (prisma.oAuthClient.findUnique as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+                id: 'client-123', clientId: 'client-123', isActive: true,
+                redirectUris: ['https://app.test/callback'],
+                scopes: ['openid', 'internal', 'government'],
+                grants: ['authorization_code'],
+            });
+            (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockReturnValueOnce({ userType: 'GOVERNMENT' });
+
+            await oauthService.generateAuthorizationCode({
+                clientId: 'client-123',
+                userId: 'user-123',
+                redirectUri: 'https://app.test/callback',
+                scopes: ['openid', 'internal', 'government'],
+            });
+
+            const createArg = (prisma.oAuthAuthorizationCode.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+            // GOVERNMENT user → `government` kept, `internal` dropped
+            expect(createArg.data.scopes).toEqual(['openid', 'government']);
+        });
+
+        it('keeps `internal` scope for INTERNAL users', async () => {
+            const { prisma } = await import('../config/database.js');
+            const { oauthService } = await import('../services/oauth.service.js');
+
+            (prisma.oAuthClient.findUnique as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+                id: 'client-123', clientId: 'client-123', isActive: true,
+                redirectUris: ['https://app.test/callback'],
+                scopes: ['openid', 'internal'],
+                grants: ['authorization_code'],
+            });
+            (prisma.user.findUnique as ReturnType<typeof vi.fn>).mockReturnValueOnce({ userType: 'INTERNAL' });
+
+            await oauthService.generateAuthorizationCode({
+                clientId: 'client-123',
+                userId: 'user-123',
+                redirectUri: 'https://app.test/callback',
+                scopes: ['openid', 'internal'],
+            });
+
+            const createArg = (prisma.oAuthAuthorizationCode.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+            expect(createArg.data.scopes).toEqual(['openid', 'internal']);
+        });
+    });
+
+    describe('exchangeAuthorizationCode — offline_access', () => {
+        const baseArgs = {
+            code: 'auth-code-123',
+            clientId: 'client-123',
+            clientSecret: 'secret',
+            redirectUri: 'https://app.test/callback',
+        };
+
+        it('issues refresh_token when client has the refresh_token grant (fallback)', async () => {
+            const { oauthService } = await import('../services/oauth.service.js');
+            // default mock: scopes without offline_access, grants include refresh_token
+            const result = await oauthService.exchangeAuthorizationCode(baseArgs);
+            expect(result.refresh_token).toBeDefined();
+        });
+
+        it('omits refresh_token without offline_access nor refresh_token grant', async () => {
+            const { clientService } = await import('../services/client.service.js');
+            const { oauthService } = await import('../services/oauth.service.js');
+
+            (clientService.validateCredentials as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+                id: 'client-123', clientId: 'client-123', isActive: true,
+                redirectUris: ['https://app.test/callback'],
+                scopes: ['openid', 'profile'],
+                grants: ['authorization_code'], // no refresh_token grant
+            });
+
+            const result = await oauthService.exchangeAuthorizationCode(baseArgs);
+            expect(result.refresh_token).toBeUndefined();
+        });
+
+        it('issues refresh_token when offline_access is granted', async () => {
+            const { prisma } = await import('../config/database.js');
+            const { clientService } = await import('../services/client.service.js');
+            const { oauthService } = await import('../services/oauth.service.js');
+
+            (clientService.validateCredentials as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+                id: 'client-123', clientId: 'client-123', isActive: true,
+                redirectUris: ['https://app.test/callback'],
+                scopes: ['openid', 'offline_access'],
+                grants: ['authorization_code'], // no refresh_token grant
+            });
+            (prisma.oAuthAuthorizationCode.findUnique as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+                id: 'code-id', code: 'auth-code-123', clientId: 'client-123', userId: 'user-123',
+                redirectUri: 'https://app.test/callback',
+                scopes: ['openid', 'offline_access'],
+                expiresAt: new Date(Date.now() + 600000), used: false,
+            });
+
+            const result = await oauthService.exchangeAuthorizationCode(baseArgs);
+            expect(result.refresh_token).toBeDefined();
         });
     });
 

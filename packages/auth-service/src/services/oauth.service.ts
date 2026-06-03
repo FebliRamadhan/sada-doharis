@@ -52,6 +52,21 @@ export const oauthService = {
             throw new InvalidScopeError(`Invalid scopes: ${invalidScopes.join(', ')}`);
         }
 
+        // User-type-restricted scopes: `internal` is reserved for INTERNAL users and
+        // `government` for GOVERNMENT users. Unauthorized scopes are dropped here
+        // (downscoping) so the issued token only carries scopes the user is entitled to.
+        const requestingUser = await prisma.user.findUnique({
+            where: { id: data.userId },
+            select: { userType: true },
+        });
+        const RESTRICTED_SCOPES: Record<string, string> = {
+            internal: 'INTERNAL',
+            government: 'GOVERNMENT',
+        };
+        const grantedScopes = data.scopes.filter(
+            s => !(s in RESTRICTED_SCOPES) || requestingUser?.userType === RESTRICTED_SCOPES[s]
+        );
+
         // Generate code
         const code = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + AUTH_CODE_EXPIRES * 1000);
@@ -60,7 +75,7 @@ export const oauthService = {
             data: {
                 code,
                 redirectUri: data.redirectUri,
-                scopes: data.scopes,
+                scopes: grantedScopes,
                 expiresAt,
                 nonce: data.nonce,
                 codeChallenge: data.codeChallenge,
@@ -156,14 +171,21 @@ export const oauthService = {
             authCode.scopes
         );
 
-        const refreshToken = tokenService.generateRefreshToken(authCode.userId, 'user');
+        // Refresh token is only issued when `offline_access` is granted (OIDC §11).
+        // Backward-compat fallback: clients that registered the `refresh_token` grant
+        // still receive one even without explicitly requesting offline_access.
+        const issueRefreshToken =
+            authCode.scopes.includes('offline_access') || client.grants.includes('refresh_token');
+        const refreshToken = issueRefreshToken
+            ? tokenService.generateRefreshToken(authCode.userId, 'user')
+            : null;
 
         // Store tokens
         await tokenService.storeToken({
             accessToken: accessToken.token,
-            refreshToken: refreshToken.token,
+            refreshToken: refreshToken?.token,
             accessTokenExpiresAt: accessToken.expiresAt,
-            refreshTokenExpiresAt: refreshToken.expiresAt,
+            refreshTokenExpiresAt: refreshToken?.expiresAt,
             scopes: authCode.scopes,
             userId: authCode.userId,
             clientId: client.id,
@@ -180,6 +202,7 @@ export const oauthService = {
                 userInfo: {
                     email: authCode.user.email,
                     name: authCode.user.name,
+                    email_verified: authCode.user.userType === 'INTERNAL',
                 },
             });
         }
@@ -193,7 +216,7 @@ export const oauthService = {
             access_token: accessToken.token,
             token_type: 'Bearer',
             expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
-            refresh_token: refreshToken.token,
+            ...(refreshToken ? { refresh_token: refreshToken.token } : {}),
             scope: authCode.scopes.join(' '),
             ...(id_token ? { id_token } : {}),
         };

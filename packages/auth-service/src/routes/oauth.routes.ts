@@ -455,10 +455,10 @@ router.get('/.well-known/openid-configuration', (req: Request, res: Response) =>
         response_types_supported: ['code'],
         subject_types_supported: ['public'],
         id_token_signing_alg_values_supported: ['RS256'],
-        scopes_supported: ['openid', 'profile', 'email', 'offline_access', 'internal', 'government'],
+        scopes_supported: ['openid', 'profile', 'email', 'offline_access', 'internal', 'government', 'pegawai'],
         token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic'],
         code_challenge_methods_supported: ['plain', 'S256'],
-        claims_supported: ['sub', 'iss', 'aud', 'exp', 'iat', 'nonce', 'name', 'email', 'email_verified', 'preferred_username'],
+        claims_supported: ['sub', 'iss', 'aud', 'exp', 'iat', 'nonce', 'name', 'email', 'email_verified', 'preferred_username', 'nip', 'fullname'],
     });
 });
 

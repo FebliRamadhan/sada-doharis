@@ -19,6 +19,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 * Berikan penjelasan yang ringkas dan langsung ke solusi (concise).
 * Gunakan blok kode hanya untuk bagian yang perlu diubah. Jangan menulis ulang seluruh file jika hanya satu fungsi yang diganti.
 
+## 5 Unit Test
+* Lakukan unit test untuk fitur complex
+* Pastikan logic sudah sesuai dan tidak ada error
+
 
 ## Commands
 
