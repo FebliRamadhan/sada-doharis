@@ -115,6 +115,7 @@ router.get('/userinfo', async (req: Request, res: Response, next: NextFunction) 
       try {
         const pegawai = await pegawaiService.getByEmail(user.email);
         if (pegawai) {
+          response.pegawai_id = pegawai.master_pegawai_id;
           response.nip = pegawai.nip;
           response.fullname = pegawai.nama_cetak;
         }
