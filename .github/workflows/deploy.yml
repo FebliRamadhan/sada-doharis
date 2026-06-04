@@ -33,9 +33,13 @@ jobs:
         id: tag
         run: |
           if [ -n "${{ inputs.image_tag }}" ]; then
+            # Manual override (workflow_dispatch)
             echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            # On workflow_run, github.sha is the default-branch HEAD and can lag behind
+            # the commit that actually triggered the Release. Prefer the Release's head_sha.
+            SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+            echo "tag=sha-${SHA}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Copy compose files to server
