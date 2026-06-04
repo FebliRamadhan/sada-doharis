@@ -203,6 +203,7 @@ export interface OIDCUserInfoResponse {
   email?: string;
   email_verified?: boolean;
   preferred_username?: string;
+  pegawai_id?: string;
   nip?: string;
   fullname?: string;
 }
