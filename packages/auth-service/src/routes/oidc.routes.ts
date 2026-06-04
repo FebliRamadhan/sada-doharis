@@ -83,7 +83,6 @@ router.get('/userinfo', async (req: Request, res: Response, next: NextFunction) 
         email: true,
         name: true,
         isActive: true,
-        providerId: true,
         userType: true,
       },
     });
@@ -106,20 +105,21 @@ router.get('/userinfo', async (req: Request, res: Response, next: NextFunction) 
     }
 
     // Employee claims — only for internal users with the `pegawai` scope.
-    // NIP is already persisted in user.providerId; nama_cetak comes from MySQL.
-    if (payload.scopes.includes('pegawai') && user.userType === 'INTERNAL') {
-      response.nip = user.providerId ?? undefined;
-
-      if (pegawaiService.isConfigured() && user.providerId) {
-        try {
-          const pegawai = await pegawaiService.getByNip(user.providerId);
-          if (pegawai) {
-            response.nip = pegawai.nip;
-            response.fullname = pegawai.nama_cetak;
-          }
-        } catch {
-          // MySQL unavailable — keep NIP from providerId, skip fullname
+    // Resolve NIP from master_pegawai by email. (providerId holds the LDAP uid,
+    // NOT the NIP, so it must never be returned as nip.)
+    if (
+      payload.scopes.includes('pegawai') &&
+      user.userType === 'INTERNAL' &&
+      pegawaiService.isConfigured()
+    ) {
+      try {
+        const pegawai = await pegawaiService.getByEmail(user.email);
+        if (pegawai) {
+          response.nip = pegawai.nip;
+          response.fullname = pegawai.nama_cetak;
         }
+      } catch {
+        // MySQL unavailable — skip employee claims rather than return a wrong nip
       }
     }
 
