@@ -308,6 +308,11 @@ on:
     workflows: [Release]
     types: [completed]
   workflow_dispatch:            # bisa juga dipicu manual
+    inputs:
+      image_tag:
+        description: 'Override tag image (kosong = sha commit pemicu Release)'
+        required: false
+        default: ''
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'   # hindari deprecation Node 20
 jobs:
@@ -315,6 +320,17 @@ jobs:
     # self-hosted kalau server ber-IP privat; ganti ke ubuntu-latest kalau server publik
     runs-on: self-hosted
     steps:
+      - name: Tentukan tag image
+        id: tag
+        run: |
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            # PENTING: pakai head_sha (commit yang MEMICU Release), BUKAN github.sha —
+            # github.sha saat workflow_run bisa "lagging" → deploy image lama. (lihat Kesalahan #8)
+            SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+            echo "tag=sha-${SHA}" >> "$GITHUB_OUTPUT"
+          fi
       - uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.PROD_HOST }}
@@ -325,12 +341,16 @@ jobs:
             set -euo pipefail
             cd "${{ secrets.PROD_DEPLOY_PATH }}"        # mis. /srv/apps/myapp
             REPO_LC="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USER }}" --password-stdin
+            export VERSION="${{ steps.tag.outputs.tag }}"   # dipakai compose: image:${VERSION}
             export APP_IMAGE="ghcr.io/${REPO_LC}/myapp"
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USER }}" --password-stdin
             docker compose pull
             docker compose up -d --remove-orphans
             docker image prune -f
 ```
+> `docker-compose.yml` di server merujuk image versi spesifik, mis.
+> `image: ${APP_IMAGE}:${VERSION}` — supaya yang ditarik **persis** tag hasil build, bukan
+> selalu `latest` (yang bisa salah/lama).
 
 ### 5.6 Aktifkan: commit & push
 ```bash
@@ -383,6 +403,16 @@ docker compose -f docker-compose.prod.yml logs --tail=50 auth-service
    revoke & ganti.
 7. **IP privat + cloud runner.** Cloud runner tak bisa SSH ke `192.168.x.x`. Wajib
    self-hosted runner.
+8. **Deploy image lama (tag "lagging").** Saat `deploy.yml` dipicu `workflow_run`,
+   `${{ github.sha }}` = HEAD default-branch yang bisa **tertinggal** dari commit yang
+   memicu Release → deploy menarik image **versi lama** padahal Release build versi baru.
+   Gejala: "deploy success" tapi perubahan tak muncul, container tak restart. **Solusi:**
+   resolve tag dari `${{ github.event.workflow_run.head_sha }}` (lihat template 5.5), atau
+   deploy manual dengan tag eksplisit: `gh workflow run deploy.yml -f image_tag=sha-<commit>`.
+   Selalu **verifikasi** image yang jalan: `docker compose ps <svc> --format '{{.Image}}'`.
+9. **MySQL/integrasi tak terisi di server.** Fitur yang butuh sumber luar (mis. lookup NIP
+   pegawai ke MySQL) diam-diam mati kalau `MYSQL_*` kosong di `.env` server. Pool dibuat
+   *lazy* — cek log saat fitur dipanggil: `docker compose logs auth-service | grep -i mysql`.
 
 ---
 
