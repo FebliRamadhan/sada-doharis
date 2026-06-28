@@ -3,7 +3,8 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { userService } from '../services/user.service.js';
 import { tokenService } from '../services/token.service.js';
-import { sendSuccess, ValidationError, UnauthorizedError, ForbiddenError } from '@sada/shared';
+import { sendSuccess, sendPaginated, ValidationError, UnauthorizedError, ForbiddenError } from '@sada/shared';
+import { adminGuard } from '../middleware/adminGuard.js';
 
 const router = Router();
 
@@ -11,6 +12,47 @@ const router = Router();
 const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
+});
+
+const setStatusSchema = z.object({ isActive: z.boolean() });
+
+/**
+ * @swagger
+ * /users:
+ *   get:
+ *     summary: List users (admin)
+ *     tags: [Users]
+ */
+router.get('/', adminGuard, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const page = parseInt((req.query['page'] as string) ?? '1', 10);
+    const limit = parseInt((req.query['limit'] as string) ?? '20', 10);
+    const search = (req.query['search'] as string) ?? undefined;
+    const { users, meta } = await userService.list({ page, limit, search });
+    sendPaginated(res, users, meta.page, meta.limit, meta.total);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /users/{id}/status:
+ *   patch:
+ *     summary: Activate/deactivate a user (admin)
+ *     tags: [Users]
+ */
+router.patch('/:id/status', adminGuard, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = setStatusSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
+    }
+    const user = await userService.setActive(req.params['id'] as string, parsed.data.isActive);
+    sendSuccess(res, user);
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**

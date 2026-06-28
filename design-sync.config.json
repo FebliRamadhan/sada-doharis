@@ -1,0 +1,21 @@
+{
+  "projectId": "9780a299-a15c-45e7-bf42-d8f9c9da1f8c",
+  "projectName": "SADA SSO Design System",
+  "syncStrategy": "tokens-only-offscript",
+  "shape": "package",
+  "reason": "auth-ui is a vanilla-TS SPA (no React/exported components, no Storybook). The standard converter cannot extract a component bundle, so this is a hand-built token-only sync. Do NOT run package-build.mjs against this repo.",
+  "source": {
+    "package": "packages/auth-ui",
+    "sourceCss": "packages/auth-ui/src/style.css",
+    "compiledCss": "packages/auth-ui/dist/assets/index-*.css"
+  },
+  "build": {
+    "outDir": ".design-sync/build",
+    "entry": "styles.css",
+    "bundleCss": "_ds_bundle.css",
+    "tokens": ["tokens/colors.css", "tokens/typography.css", "tokens/spacing.css", "tokens/radius.css", "tokens/shadows.css"],
+    "cards": ["tokens/colors.html", "tokens/typography.html"]
+  },
+  "notes": "Re-sync: rebuild auth-ui (pnpm --filter @sada/auth-ui build), copy the fresh dist CSS over _ds_bundle.css, refresh token values from src/style.css if changed, re-upload. Fonts are remote Google Fonts (no fonts/ dir). No _ds_sync.json anchor — every re-sync re-uploads the full set.",
+  "generatedAt": "2026-06-26"
+}

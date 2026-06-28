@@ -44,6 +44,17 @@ const CHECKS: EnvCheck[] = [
     required: IS_PROD,
     description: 'Public OIDC issuer URL (must match the tokens you sign)',
   },
+  {
+    name: 'MFA_SECRET_ENC_KEY',
+    required: IS_PROD,
+    minLength: 32,
+    description: 'AES-256-GCM key for encrypting TOTP secrets at rest (required in production)',
+  },
+  {
+    name: 'MFA_ISSUER',
+    required: false,
+    description: 'Label shown in authenticator apps (default "SADA SSO")',
+  },
 ];
 
 export function validateEnv(): void {

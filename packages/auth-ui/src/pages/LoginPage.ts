@@ -1,219 +1,188 @@
 /**
- * Login Page Component
- * Only Email + SSO tabs (Internal tab removed)
+ * Login Page — faithful rebuild of the SSO PANRB handoff "Login B Hi-Fi".
+ * Full-bleed split screen (brand gradient panel + flat form column), rendered
+ * into #app via the `.admin-mode` container override so it replaces the shared
+ * card shell. Login + MFA-gate + return_url logic preserved.
  */
-import { endpoints, apiRequest, setStoredToken, setStoredUser, type AuthResponse } from '../api';
+import {
+  endpoints,
+  apiRequest,
+  setStoredToken,
+  setStoredUser,
+  type AuthResponse,
+} from '../api';
 import { router, getAppContainer, getQueryParams } from '../router';
+import { MFA_TICKET_KEY, MFA_RETURN_URL_KEY } from './MFAVerifyPage';
+
+const FIELD =
+  "width:100%;box-sizing:border-box;height:50px;border:1.5px solid #C8D8EA;border-radius:11px;font:500 14px 'Inter';color:#0D1B2A;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s";
 
 export async function LoginPage(): Promise<void> {
   const app = getAppContainer();
+  // Full-bleed: hide the shared split banner, let #app own the viewport.
+  document.querySelector('.auth-container')?.classList.add('admin-mode');
 
   app.innerHTML = `
-        <div class="auth-card">
-            <!-- Mobile-only ministry header -->
-            <div class="mobile-brand-header" aria-hidden="true">
-                <img src="/logo-panrb.png"
-                     alt="Logo Kementerian PANRB"
-                     height="44" style="width:auto;">
-            </div>
+    <div class="sso-auth">
 
-            <!-- Page header -->
-            <div class="form-header">
-                <h1>Masuk</h1>
-                <p>Gunakan akun instansi Anda untuk mengakses layanan PANRB.</p>
-            </div>
+      <!-- LEFT · BRAND PANEL -->
+      <div class="sso-brand" style="position:relative;width:46%;min-width:420px;overflow:hidden;padding:56px 56px 44px;display:flex;flex-direction:column;justify-content:space-between;color:#fff;background:radial-gradient(circle at 16% 10%, rgba(245,194,24,.18), transparent 40%), radial-gradient(circle at 88% 92%, rgba(40,148,217,.28), transparent 46%), linear-gradient(158deg,#01347C 0%,#00235A 100%);">
+        <div style="position:absolute;top:-120px;right:-120px;width:340px;height:340px;border-radius:50%;border:1.5px solid rgba(255,255,255,.07)"></div>
+        <div style="position:absolute;top:-60px;right:-60px;width:220px;height:220px;border-radius:50%;border:1.5px solid rgba(255,255,255,.07)"></div>
 
-            <!-- Error Alert -->
-            <div id="error-alert" class="alert alert-error" role="alert" aria-live="assertive" style="display: none;">
-                <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                <span id="error-message"></span>
-            </div>
-
-            <!-- Login Tabs -->
-            <div class="tabs" role="tablist" aria-label="Metode login">
-                <button class="tab-btn active" data-tab="email" type="button"
-                        role="tab" aria-selected="true" aria-controls="tab-email">
-                    Email / Kata Sandi
-                </button>
-                <button class="tab-btn" data-tab="sso" type="button" style="display: none;"
-                        role="tab" aria-selected="false" aria-controls="tab-sso">
-                    SSO Instansi
-                </button>
-            </div>
-
-            <!-- Email/Password Tab -->
-            <div id="tab-email" class="tab-content active" role="tabpanel">
-                <form id="login-form" novalidate>
-                    <div class="form-group">
-                        <label class="form-label" for="email">Alamat Email</label>
-                        <div class="input-wrapper">
-                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                                <polyline points="22,6 12,13 2,6"/>
-                            </svg>
-                            <input type="email" id="email" name="email" class="form-input"
-                                   placeholder="anda@instansi.go.id" required autocomplete="email"
-                                   aria-required="true" aria-describedby="email-hint">
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="password">Kata Sandi</label>
-                        <div class="input-wrapper">
-                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                            </svg>
-                            <input type="password" id="password" name="password" class="form-input"
-                                   placeholder="Masukkan kata sandi Anda" required autocomplete="current-password"
-                                   aria-required="true">
-                        </div>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary" id="submit-btn">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-                            <polyline points="10 17 15 12 10 7"/>
-                            <line x1="15" y1="12" x2="3" y2="12"/>
-                        </svg>
-                        Masuk
-                    </button>
-                </form>
-            </div>
-
-            <!-- SSO Providers Tab -->
-            <div id="tab-sso" class="tab-content" role="tabpanel">
-                <div class="providers">
-                    <!-- SPLP — Government ASN SSO -->
-                    <a href="/api/auth/splp/authorize" class="btn-provider" style="display: none;"
-                       aria-label="Login dengan SPLP, portal SSO Aparatur Sipil Negara">
-                        <span class="icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="#002B5B" stroke-width="2"
-                                 stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                                <polyline points="9 22 9 12 15 12 15 22"/>
-                            </svg>
-                        </span>
-                        <span class="provider-label">Masuk dengan SPLP</span>
-                        <span class="provider-badge">ASN</span>
-                    </a>
-
-                    <!-- Google -->
-                    <a href="/api/auth/google" class="btn-provider" style="display: none;"
-                       aria-label="Login dengan akun Google">
-                        <span class="icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                            </svg>
-                        </span>
-                        <span class="provider-label">Masuk dengan Google</span>
-                    </a>
-
-                    <!-- Facebook -->
-                    <a href="/api/auth/facebook" class="btn-provider"
-                       aria-label="Login dengan akun Facebook">
-                        <span class="icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="#1877F2">
-                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                            </svg>
-                        </span>
-                        <span class="provider-label">Masuk dengan Facebook</span>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Security Badge -->
-            <div class="security-badge" role="note" aria-label="Informasi keamanan">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-                <span>Dilindungi enkripsi SSL/TLS — Portal resmi KemenPANRB</span>
-            </div>
+        <div style="position:relative;">
+          <div style="display:inline-flex;align-items:center;background:#fff;border-radius:14px;padding:10px 18px;box-shadow:0 4px 20px rgba(0,0,0,.25);">
+            <img src="/logo-panrb.png" alt="Logo Kementerian PANRB" style="height:44px;width:auto;display:block;">
+          </div>
         </div>
-    `;
 
-  initTabs();
+        <div style="position:relative;max-width:380px;">
+          <div style="font:800 34px/1.18 'Plus Jakarta Sans';margin-bottom:16px;">Satu akun untuk semua layanan PANRB.</div>
+          <div style="font:400 14px/1.6 'Inter';color:rgba(255,255,255,.72);margin-bottom:34px;">Masuk sekali, akses seluruh aplikasi kepegawaian dan layanan internal pemerintah dengan aman.</div>
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            ${benefit('Single Sign-On terpadu antar instansi')}
+            ${benefit('Verifikasi 2 langkah &amp; enkripsi data')}
+            ${benefit('Kelola sesi &amp; perangkat aktif')}
+          </div>
+        </div>
+
+        <div style="position:relative;font:500 11px 'Inter';color:rgba(255,255,255,.5);">© 2026 Kementerian PANRB · Republik Indonesia</div>
+      </div>
+
+      <!-- RIGHT · FORM -->
+      <div class="sso-form" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 40px;position:relative;overflow-y:auto;">
+        <div style="position:absolute;top:28px;right:32px;display:flex;align-items:center;gap:4px;border:1.5px solid #E5EEF7;border-radius:999px;padding:4px;background:#fff;">
+          <div style="padding:5px 12px;border-radius:999px;background:#01347C;color:#fff;font:600 11px 'Inter';">ID</div>
+          <div style="padding:5px 12px;border-radius:999px;color:#5E7896;font:600 11px 'Inter';">EN</div>
+        </div>
+
+        <div style="width:100%;max-width:392px;">
+          <div style="font:800 27px 'Plus Jakarta Sans';color:#0D1B2A;margin-bottom:7px;">Masuk ke SSO</div>
+          <div style="font:400 14px 'Inter';color:#5E7896;margin-bottom:32px;">Gunakan email instansi untuk melanjutkan.</div>
+
+          <div id="error-alert" class="alert alert-error" role="alert" aria-live="assertive" style="display:none;margin-bottom:18px;">
+            <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span id="error-message"></span>
+          </div>
+
+          <form id="login-form" novalidate>
+            <!-- Email -->
+            <div style="margin-bottom:18px;">
+              <div style="font:600 12px 'Inter';color:#354E6B;margin-bottom:8px;">Email</div>
+              <div style="position:relative;">
+                <div style="position:absolute;left:15px;top:50%;transform:translateY(-50%);display:flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9DB2C9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="m3 7 9 6 9-6"/></svg></div>
+                <input id="email" name="email" type="email" placeholder="nama@instansi.go.id" required autocomplete="email" style="${FIELD};padding:0 16px 0 44px;">
+              </div>
+            </div>
+
+            <!-- Password -->
+            <div style="margin-bottom:16px;">
+              <div style="font:600 12px 'Inter';color:#354E6B;margin-bottom:8px;">Kata sandi</div>
+              <div style="position:relative;">
+                <div style="position:absolute;left:15px;top:50%;transform:translateY(-50%);display:flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9DB2C9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+                <input id="password" name="password" type="password" placeholder="Masukkan kata sandi" required autocomplete="current-password" style="${FIELD};padding:0 46px 0 44px;">
+                <button type="button" id="toggle-pw" aria-label="Tampilkan sandi" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:none;background:transparent;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                  ${eyeIcon(false)}
+                </button>
+              </div>
+            </div>
+
+            <!-- Remember + forgot -->
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+              <label style="display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;">
+                <input type="checkbox" id="remember" checked style="width:19px;height:19px;border-radius:6px;accent-color:#005598;cursor:pointer;">
+                <span style="font:500 13px 'Inter';color:#354E6B;">Ingat saya</span>
+              </label>
+              <a href="/forgot-password" style="font:600 13px 'Inter';color:#005598;text-decoration:none;">Lupa sandi?</a>
+            </div>
+
+            <!-- Submit -->
+            <button type="submit" id="submit-btn" style="width:100%;height:50px;border:none;border-radius:11px;background:#005598;color:#fff;font:700 14px 'Inter';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 16px -6px rgba(0,85,152,.5);transition:background .15s;">
+              Masuk
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </button>
+          </form>
+
+          <div style="text-align:center;margin-top:28px;font:500 13px 'Inter';color:#5E7896;">Belum punya akun? <a href="/register" style="color:#005598;font-weight:600;text-decoration:none;">Daftar</a></div>
+        </div>
+      </div>
+    </div>
+  `;
+
   initLoginForm();
   checkUrlError();
 }
 
-function initTabs(): void {
-  const tabButtons = document.querySelectorAll('.tab-btn');
-  const tabContents = document.querySelectorAll('.tab-content');
+function benefit(text: string): string {
+  return `<div style="display:flex;align-items:center;gap:12px;">
+    <div style="width:26px;height:26px;border-radius:50%;background:rgba(245,194,24,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F5C218" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+    <div style="font:500 13px 'Inter';color:rgba(255,255,255,.86);">${text}</div>
+  </div>`;
+}
 
-  tabButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tabId = (btn as HTMLElement).dataset.tab;
-      if (!tabId) return;
-
-      tabButtons.forEach((b) => b.classList.remove('active'));
-      tabContents.forEach((c) => c.classList.remove('active'));
-
-      btn.classList.add('active');
-      document.getElementById(`tab-${tabId}`)?.classList.add('active');
-    });
-  });
+function eyeIcon(open: boolean): string {
+  return open
+    ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E7896" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>'
+    : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E7896" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 5.2A9.5 9.5 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.9M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.5 9.5 0 0 0 4.1-.9"/><path d="m4 4 16 16"/></svg>';
 }
 
 function initLoginForm(): void {
-  const loginForm = document.getElementById('login-form') as HTMLFormElement;
-  if (loginForm) {
-    loginForm.addEventListener('submit', handleEmailLogin);
-  }
+  const form = document.getElementById('login-form') as HTMLFormElement | null;
+  form?.addEventListener('submit', handleEmailLogin);
+
+  // Focus ring on fields.
+  ['email', 'password'].forEach((id) => {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    el?.addEventListener('focus', () => {
+      el.style.borderColor = '#005598';
+      el.style.boxShadow = '0 0 0 3px rgba(0,85,152,.13)';
+    });
+    el?.addEventListener('blur', () => {
+      el.style.borderColor = '#C8D8EA';
+      el.style.boxShadow = 'none';
+    });
+  });
+
+  const pw = document.getElementById('password') as HTMLInputElement | null;
+  const toggle = document.getElementById('toggle-pw');
+  toggle?.addEventListener('click', () => {
+    if (!pw) return;
+    const show = pw.type === 'password';
+    pw.type = show ? 'text' : 'password';
+    toggle.innerHTML = eyeIcon(show);
+  });
 }
 
 function checkUrlError(): void {
-  const params = getQueryParams();
-  const error = params.get('error');
-  if (error) {
-    showError(decodeURIComponent(error));
-  }
+  const error = getQueryParams().get('error');
+  if (error) showError(decodeURIComponent(error));
 }
 
 function showError(message: string): void {
-  const errorAlert = document.getElementById('error-alert');
-  const errorMessage = document.getElementById('error-message');
-  if (errorAlert && errorMessage) {
-    errorMessage.textContent = message;
-    errorAlert.style.display = 'flex';
+  const alert = document.getElementById('error-alert');
+  const msg = document.getElementById('error-message');
+  if (alert && msg) {
+    msg.textContent = message;
+    alert.style.display = 'flex';
   }
 }
 
 function hideError(): void {
-  const errorAlert = document.getElementById('error-alert');
-  if (errorAlert) {
-    errorAlert.style.display = 'none';
-  }
+  const alert = document.getElementById('error-alert');
+  if (alert) alert.style.display = 'none';
 }
 
 function handleLoginSuccess(data: AuthResponse['data']): void {
   if (!data) return;
-
-  // After apiRequest unwraps the backend envelope, data = { access_token, user, ... }
   const d = data as unknown as Record<string, unknown>;
   const token = String(d['access_token'] ?? d['accessToken'] ?? '');
   const user = d['user'] as import('../api').User | undefined;
-
   if (!token || !user) return;
 
   setStoredToken(token);
   setStoredUser(user);
 
-  // Check if there's a return URL for OAuth flow
-  const params = getQueryParams();
-  const returnUrl = params.get('return_url');
-
+  const returnUrl = getQueryParams().get('return_url');
   if (returnUrl) {
     window.location.href = returnUrl;
   } else {
@@ -239,21 +208,31 @@ async function handleEmailLogin(e: Event): Promise<void> {
     });
 
     if (result.success && result.data) {
+      const d = result.data as unknown as Record<string, unknown>;
+      // Internal users are MFA-gated: backend returns a ticket instead of tokens.
+      // Carry the OAuth return URL across the MFA hop (query params not preserved).
+      const mfaReturnUrl = getQueryParams().get('return_url');
+      if (d['mfa_setup_required'] && d['mfa_ticket']) {
+        sessionStorage.setItem(MFA_TICKET_KEY, String(d['mfa_ticket']));
+        if (mfaReturnUrl) sessionStorage.setItem(MFA_RETURN_URL_KEY, mfaReturnUrl);
+        router.navigate('/mfa/setup');
+        return;
+      }
+      if (d['mfa_required'] && d['mfa_ticket']) {
+        sessionStorage.setItem(MFA_TICKET_KEY, String(d['mfa_ticket']));
+        if (mfaReturnUrl) sessionStorage.setItem(MFA_RETURN_URL_KEY, mfaReturnUrl);
+        router.navigate('/mfa/verify');
+        return;
+      }
       handleLoginSuccess(result.data);
     } else {
-      showError(result.error || 'Email atau kata sandi tidak valid.');
+      showError(result.error || 'Email atau kata sandi salah.');
     }
   } catch {
     showError('Terjadi kesalahan jaringan. Silakan coba kembali.');
   } finally {
     submitBtn.disabled = false;
-    submitBtn.innerHTML = `
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-                <polyline points="10 17 15 12 10 7"/>
-                <line x1="15" y1="12" x2="3" y2="12"/>
-            </svg>
-            Masuk`;
+    submitBtn.innerHTML =
+      'Masuk <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
   }
 }

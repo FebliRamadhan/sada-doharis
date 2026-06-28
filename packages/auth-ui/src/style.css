@@ -1114,9 +1114,9 @@ body {
   background: #F8F9FA;
 }
 
-/* Action buttons fade in on row hover */
+/* Row action buttons — always visible (emphasised further on hover) */
 .vault-row .row-actions {
-  opacity: 0.25;
+  opacity: 0.7;
   transition: opacity 200ms ease;
 }
 
@@ -1330,4 +1330,105 @@ body {
 /* — Admin hidden utility — */
 .admin-hidden {
   display: none !important;
+}
+
+/* ==========================================
+   PORTAL SSO — Responsive topbar
+   (Grids use CSS auto-fit/minmax inline, so they reflow on their own.)
+   ========================================== */
+@media (max-width: 760px) {
+  .portal-topbar {
+    gap: 0.75rem !important;
+    padding: 0 1rem !important;
+  }
+}
+@media (max-width: 480px) {
+  .portal-topbar .portal-logo-text {
+    display: none !important;
+  }
+}
+
+/* ==========================================
+   ADMIN — Responsive (tablet & mobile)
+   Inline-styled shell; target via #admin-overlay structure.
+   ========================================== */
+@media (max-width: 900px) {
+  /* Sidebar → compact icon rail; hide text labels */
+  #admin-overlay aside {
+    width: 4.25rem !important;
+    padding: 1.25rem 0.5rem !important;
+  }
+  #admin-overlay aside .admin-nav-btn span,
+  #admin-overlay aside > div:first-child > div > div:last-child {
+    display: none !important;
+  }
+  #admin-overlay aside .admin-nav-btn {
+    justify-content: center;
+  }
+  /* Hide the user name/email block at the bottom (keep avatar) */
+  #admin-overlay aside > div:last-child > div:last-child > div:last-child {
+    display: none !important;
+  }
+  /* Main content padding */
+  #admin-overlay main {
+    padding: 1.5rem 1rem !important;
+  }
+  /* Stat cards stack */
+  #admin-content [style*='repeat(3,1fr)'] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+@media (max-width: 560px) {
+  #admin-content [style*='repeat(3,1fr)'] {
+    grid-template-columns: 1fr !important;
+  }
+  /* Toolbars wrap (search + button) */
+  #admin-content header {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+  #admin-content header input {
+    width: 100% !important;
+  }
+}
+
+/* ==========================================
+   SSO AUTH — full-bleed split layout (Login B Hi-Fi)
+   Full viewport via position:fixed; media queries provide responsiveness
+   (inline styles on the page can't express breakpoints).
+   ========================================== */
+.sso-auth {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  background: #fbfdff;
+  font-family: 'Inter', sans-serif;
+  overflow-y: auto;
+}
+
+/* Tablet/medium — let the brand panel shrink before hiding. */
+@media (max-width: 1024px) {
+  .sso-auth .sso-brand {
+    width: 40%;
+    min-width: 320px;
+    padding: 40px 36px;
+  }
+}
+
+/* Mobile — hide brand panel, form goes full width. */
+@media (max-width: 768px) {
+  .sso-auth {
+    flex-direction: column;
+  }
+  .sso-auth .sso-brand {
+    display: none !important;
+  }
+  .sso-auth .sso-form {
+    padding: 32px 20px !important;
+  }
+  .sso-auth .sso-form > div {
+    max-width: 100% !important;
+  }
 }
