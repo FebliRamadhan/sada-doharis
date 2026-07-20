@@ -80,11 +80,13 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Typecheck
-        run: pnpm -r exec tsc --noEmit
-
+      # Build first: packages resolve @sada/shared types from its dist/,
+      # so a bare `tsc --noEmit` fails on a clean checkout.
       - name: Build
         run: pnpm build
+
+      - name: Typecheck
+        run: pnpm -r exec tsc --noEmit
 
       - name: Unit tests
         run: pnpm test
