@@ -275,7 +275,8 @@ function initPwStep(): void {
   pw?.addEventListener('input', () => {
     const score = scorePassword(pw.value);
     bars.forEach((bar, i) => {
-      bar.style.background = pw.value && i < score ? meta[Math.min(score - 1, 2)]!.color : '#E5EEF7';
+      bar.style.background =
+        pw.value && i < score ? meta[Math.min(score - 1, 2)]!.color : '#E5EEF7';
     });
     if (label) {
       label.textContent = pw.value

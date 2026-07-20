@@ -126,7 +126,11 @@ function renderAuthContent(user: User, client: OAuthClient, oauthParams: OAuthPa
   const content = document.getElementById('auth-content');
   if (!content) return;
 
-  const appAbbr = client.name.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase() || 'AP';
+  const appAbbr =
+    client.name
+      .replace(/[^A-Za-z]/g, '')
+      .slice(0, 2)
+      .toUpperCase() || 'AP';
   const scopeRows = oauthParams.scope
     .split(' ')
     .filter(Boolean)

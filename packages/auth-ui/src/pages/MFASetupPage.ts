@@ -139,7 +139,8 @@ async function loadSetup(ticket: string): Promise<void> {
 
 async function confirmEnable(ticket: string): Promise<void> {
   hideError();
-  const code = (document.getElementById('enable-code') as HTMLInputElement | null)?.value.trim() ?? '';
+  const code =
+    (document.getElementById('enable-code') as HTMLInputElement | null)?.value.trim() ?? '';
   const btn = document.getElementById('enable-btn') as HTMLButtonElement;
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div> Mengaktifkan...';

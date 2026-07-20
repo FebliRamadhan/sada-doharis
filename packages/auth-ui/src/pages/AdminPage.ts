@@ -975,8 +975,7 @@ function renderPagination(
 }
 
 function paginationListeners(ns: string, cb: (page: number) => Promise<void>): void {
-  const meta =
-    ns === 'clients' ? state.clientsMeta : ns === 'mfa' ? state.mfaMeta : state.logsMeta;
+  const meta = ns === 'clients' ? state.clientsMeta : ns === 'mfa' ? state.mfaMeta : state.logsMeta;
   document.getElementById(`${ns}-prev`)?.addEventListener('click', async () => {
     if (meta.page > 1) await cb(meta.page - 1);
   });

@@ -46,7 +46,9 @@ describe('pegawaiService', () => {
 
       const [sql, params] = executeMock.mock.calls[0];
       expect(sql).toContain('LEFT JOIN daf_unit_staf us ON us.unit_staf_id = p.unit_staf_id');
-      expect(sql).toContain('LEFT JOIN daf_unit_staf pu ON pu.unit_staf_id = us.parent_id_unit_kerja');
+      expect(sql).toContain(
+        'LEFT JOIN daf_unit_staf pu ON pu.unit_staf_id = us.parent_id_unit_kerja'
+      );
       expect(params).toEqual(['subowo.djoko@menpan.go.id', 'subowo.djoko@menpan.go.id']);
     });
 

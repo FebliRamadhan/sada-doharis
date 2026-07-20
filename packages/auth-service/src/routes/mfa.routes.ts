@@ -77,45 +77,50 @@ async function verifyUserCode(
  *     description: Exchanges a pending MFA ticket plus a TOTP/backup code for full tokens.
  *     tags: [Auth]
  */
-router.post('/auth/mfa/verify-login', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const parsed = verifyLoginSchema.safeParse(req.body);
-    if (!parsed.success) throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
-    const { ticket, code } = parsed.data;
+router.post(
+  '/auth/mfa/verify-login',
+  csrfProtect,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = verifyLoginSchema.safeParse(req.body);
+      if (!parsed.success)
+        throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
+      const { ticket, code } = parsed.data;
 
-    const data = await peekMfaTicket(MFA_PENDING_PREFIX, ticket);
-    if (!data) throw new UnauthorizedError('MFA session expired. Please sign in again.');
+      const data = await peekMfaTicket(MFA_PENDING_PREFIX, ticket);
+      if (!data) throw new UnauthorizedError('MFA session expired. Please sign in again.');
 
-    const user = await prisma.user.findUnique({ where: { id: data.userId } });
-    if (!user || !user.mfaEnabled || !user.mfaSecret) {
-      await deleteMfaTicket(MFA_PENDING_PREFIX, ticket);
-      throw new UnauthorizedError('MFA is not set up for this account.');
-    }
-
-    const ok = await verifyUserCode(user, code);
-    if (!ok) {
-      const attempts = await bumpMfaAttempts(MFA_PENDING_PREFIX, ticket);
-      if (attempts >= MFA_MAX_ATTEMPTS) {
+      const user = await prisma.user.findUnique({ where: { id: data.userId } });
+      if (!user || !user.mfaEnabled || !user.mfaSecret) {
         await deleteMfaTicket(MFA_PENDING_PREFIX, ticket);
-        throw new UnauthorizedError('Too many invalid codes. Please sign in again.');
+        throw new UnauthorizedError('MFA is not set up for this account.');
       }
-      throw new UnauthorizedError('Invalid verification code.');
+
+      const ok = await verifyUserCode(user, code);
+      if (!ok) {
+        const attempts = await bumpMfaAttempts(MFA_PENDING_PREFIX, ticket);
+        if (attempts >= MFA_MAX_ATTEMPTS) {
+          await deleteMfaTicket(MFA_PENDING_PREFIX, ticket);
+          throw new UnauthorizedError('Too many invalid codes. Please sign in again.');
+        }
+        throw new UnauthorizedError('Invalid verification code.');
+      }
+
+      await deleteMfaTicket(MFA_PENDING_PREFIX, ticket);
+      void auditService.log({
+        action: 'MFA_VERIFIED',
+        userId: user.id,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      const payload = await issueUserLogin({ req, res, userId: user.id, scopes: data.scopes });
+      sendSuccess(res, payload);
+    } catch (error) {
+      next(error);
     }
-
-    await deleteMfaTicket(MFA_PENDING_PREFIX, ticket);
-    void auditService.log({
-      action: 'MFA_VERIFIED',
-      userId: user.id,
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
-
-    const payload = await issueUserLogin({ req, res, userId: user.id, scopes: data.scopes });
-    sendSuccess(res, payload);
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 /**
  * @swagger
@@ -125,30 +130,35 @@ router.post('/auth/mfa/verify-login', csrfProtect, async (req: Request, res: Res
  *     description: Validates the setup ticket and returns a TOTP secret + QR code.
  *     tags: [Auth]
  */
-router.post('/auth/mfa/setup', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const parsed = setupSchema.safeParse(req.body);
-    if (!parsed.success) throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
+router.post(
+  '/auth/mfa/setup',
+  csrfProtect,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = setupSchema.safeParse(req.body);
+      if (!parsed.success)
+        throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
 
-    const data = await peekMfaTicket(MFA_SETUP_PREFIX, parsed.data.ticket);
-    if (!data) throw new UnauthorizedError('MFA setup session expired. Please sign in again.');
+      const data = await peekMfaTicket(MFA_SETUP_PREFIX, parsed.data.ticket);
+      if (!data) throw new UnauthorizedError('MFA setup session expired. Please sign in again.');
 
-    const user = await prisma.user.findUnique({ where: { id: data.userId } });
-    if (!user) throw new UnauthorizedError('Account not found.');
+      const user = await prisma.user.findUnique({ where: { id: data.userId } });
+      if (!user) throw new UnauthorizedError('Account not found.');
 
-    const { secret, uri } = mfaService.generateSecret(user.email);
-    // Persist the (encrypted) pending secret; mfaEnabled stays false until confirmed.
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { mfaSecret: mfaService.encryptSecret(secret) },
-    });
+      const { secret, uri } = mfaService.generateSecret(user.email);
+      // Persist the (encrypted) pending secret; mfaEnabled stays false until confirmed.
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { mfaSecret: mfaService.encryptSecret(secret) },
+      });
 
-    const qr = await mfaService.buildQrDataUrl(uri);
-    sendSuccess(res, { secret, uri, qr });
-  } catch (error) {
-    next(error);
+      const qr = await mfaService.buildQrDataUrl(uri);
+      sendSuccess(res, { secret, uri, qr });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
 /**
  * @swagger
@@ -158,48 +168,53 @@ router.post('/auth/mfa/setup', csrfProtect, async (req: Request, res: Response, 
  *     description: Verifies the first TOTP code, enables MFA, returns backup codes + full tokens.
  *     tags: [Auth]
  */
-router.post('/auth/mfa/enable', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const parsed = enableSchema.safeParse(req.body);
-    if (!parsed.success) throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
-    const { ticket, code } = parsed.data;
+router.post(
+  '/auth/mfa/enable',
+  csrfProtect,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = enableSchema.safeParse(req.body);
+      if (!parsed.success)
+        throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
+      const { ticket, code } = parsed.data;
 
-    const data = await peekMfaTicket(MFA_SETUP_PREFIX, ticket);
-    if (!data) throw new UnauthorizedError('MFA setup session expired. Please sign in again.');
+      const data = await peekMfaTicket(MFA_SETUP_PREFIX, ticket);
+      if (!data) throw new UnauthorizedError('MFA setup session expired. Please sign in again.');
 
-    const user = await prisma.user.findUnique({ where: { id: data.userId } });
-    if (!user || !user.mfaSecret) throw new UnauthorizedError('Start MFA setup first.');
+      const user = await prisma.user.findUnique({ where: { id: data.userId } });
+      if (!user || !user.mfaSecret) throw new UnauthorizedError('Start MFA setup first.');
 
-    const secret = mfaService.decryptSecret(user.mfaSecret);
-    if (!mfaService.verifyTotp(secret, code)) {
-      const attempts = await bumpMfaAttempts(MFA_SETUP_PREFIX, ticket);
-      if (attempts >= MFA_MAX_ATTEMPTS) {
-        await deleteMfaTicket(MFA_SETUP_PREFIX, ticket);
-        throw new UnauthorizedError('Too many invalid codes. Please sign in again.');
+      const secret = mfaService.decryptSecret(user.mfaSecret);
+      if (!mfaService.verifyTotp(secret, code)) {
+        const attempts = await bumpMfaAttempts(MFA_SETUP_PREFIX, ticket);
+        if (attempts >= MFA_MAX_ATTEMPTS) {
+          await deleteMfaTicket(MFA_SETUP_PREFIX, ticket);
+          throw new UnauthorizedError('Too many invalid codes. Please sign in again.');
+        }
+        throw new UnauthorizedError('Invalid verification code.');
       }
-      throw new UnauthorizedError('Invalid verification code.');
+
+      const { plain, hashes } = await mfaService.generateBackupCodes();
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { mfaEnabled: true, mfaEnabledAt: new Date(), mfaBackupCodes: hashes },
+      });
+
+      await deleteMfaTicket(MFA_SETUP_PREFIX, ticket);
+      void auditService.log({
+        action: 'MFA_ENABLED',
+        userId: user.id,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      const payload = await issueUserLogin({ req, res, userId: user.id, scopes: data.scopes });
+      sendSuccess(res, { ...payload, backup_codes: plain });
+    } catch (error) {
+      next(error);
     }
-
-    const { plain, hashes } = await mfaService.generateBackupCodes();
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { mfaEnabled: true, mfaEnabledAt: new Date(), mfaBackupCodes: hashes },
-    });
-
-    await deleteMfaTicket(MFA_SETUP_PREFIX, ticket);
-    void auditService.log({
-      action: 'MFA_ENABLED',
-      userId: user.id,
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
-
-    const payload = await issueUserLogin({ req, res, userId: user.id, scopes: data.scopes });
-    sendSuccess(res, { ...payload, backup_codes: plain });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 /**
  * @swagger
@@ -234,35 +249,40 @@ router.get('/auth/mfa/status', async (req: Request, res: Response, next: NextFun
  *     security:
  *       - bearerAuth: []
  */
-router.post('/auth/mfa/disable', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const parsed = disableSchema.safeParse(req.body);
-    if (!parsed.success) throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
+router.post(
+  '/auth/mfa/disable',
+  csrfProtect,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = disableSchema.safeParse(req.body);
+      if (!parsed.success)
+        throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
 
-    const userId = await resolveUserId(req);
-    if (!userId) throw new UnauthorizedError('Not authenticated');
+      const userId = await resolveUserId(req);
+      if (!userId) throw new UnauthorizedError('Not authenticated');
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user || !user.mfaEnabled) throw new ValidationError('MFA is not enabled.');
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user || !user.mfaEnabled) throw new ValidationError('MFA is not enabled.');
 
-    const ok = await verifyUserCode(user, parsed.data.code);
-    if (!ok) throw new UnauthorizedError('Invalid verification code.');
+      const ok = await verifyUserCode(user, parsed.data.code);
+      if (!ok) throw new UnauthorizedError('Invalid verification code.');
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: [], mfaEnabledAt: null },
-    });
-    void auditService.log({
-      action: 'MFA_DISABLED',
-      userId: user.id,
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
-    sendSuccess(res, { disabled: true });
-  } catch (error) {
-    next(error);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: [], mfaEnabledAt: null },
+      });
+      void auditService.log({
+        action: 'MFA_DISABLED',
+        userId: user.id,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+      sendSuccess(res, { disabled: true });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
 /**
  * @swagger
@@ -273,28 +293,35 @@ router.post('/auth/mfa/disable', csrfProtect, async (req: Request, res: Response
  *     security:
  *       - bearerAuth: []
  */
-router.get('/admin/mfa/users', adminGuard, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const page = Math.max(1, parseInt((req.query['page'] as string) ?? '1', 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt((req.query['limit'] as string) ?? '20', 10) || 20));
+router.get(
+  '/admin/mfa/users',
+  adminGuard,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const page = Math.max(1, parseInt((req.query['page'] as string) ?? '1', 10) || 1);
+      const limit = Math.min(
+        100,
+        Math.max(1, parseInt((req.query['limit'] as string) ?? '20', 10) || 20)
+      );
 
-    const where = { userType: 'INTERNAL' as const };
-    const [users, total] = await Promise.all([
-      prisma.user.findMany({
-        where,
-        select: { id: true, email: true, name: true, mfaEnabled: true, mfaEnabledAt: true },
-        orderBy: { email: 'asc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.user.count({ where }),
-    ]);
+      const where = { userType: 'INTERNAL' as const };
+      const [users, total] = await Promise.all([
+        prisma.user.findMany({
+          where,
+          select: { id: true, email: true, name: true, mfaEnabled: true, mfaEnabledAt: true },
+          orderBy: { email: 'asc' },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        prisma.user.count({ where }),
+      ]);
 
-    sendSuccess(res, { users, page, limit, total, totalPages: Math.ceil(total / limit) });
-  } catch (error) {
-    next(error);
+      sendSuccess(res, { users, page, limit, total, totalPages: Math.ceil(total / limit) });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
 /**
  * @swagger
@@ -305,29 +332,33 @@ router.get('/admin/mfa/users', adminGuard, async (req: Request, res: Response, n
  *     security:
  *       - bearerAuth: []
  */
-router.post('/admin/mfa/users/:id/disable', adminGuard, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const id = req.params['id'] as string;
-    if (!id) throw new ValidationError('Missing user id');
+router.post(
+  '/admin/mfa/users/:id/disable',
+  adminGuard,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params['id'] as string;
+      if (!id) throw new ValidationError('Missing user id');
 
-    const user = await prisma.user.findUnique({ where: { id }, select: { id: true } });
-    if (!user) throw new ValidationError('User not found');
+      const user = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+      if (!user) throw new ValidationError('User not found');
 
-    await prisma.user.update({
-      where: { id },
-      data: { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: [], mfaEnabledAt: null },
-    });
-    void auditService.log({
-      action: 'MFA_ADMIN_RESET',
-      userId: id,
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-      details: { resetBy: (req.headers['x-user-id'] as string) ?? 'admin' },
-    });
-    sendSuccess(res, { reset: true });
-  } catch (error) {
-    next(error);
+      await prisma.user.update({
+        where: { id },
+        data: { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: [], mfaEnabledAt: null },
+      });
+      void auditService.log({
+        action: 'MFA_ADMIN_RESET',
+        userId: id,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+        details: { resetBy: (req.headers['x-user-id'] as string) ?? 'admin' },
+      });
+      sendSuccess(res, { reset: true });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
 export { router as mfaRoutes };
