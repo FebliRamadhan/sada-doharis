@@ -68,3 +68,7 @@ docs/flows/
 # Vite
 packages/auth-ui/.vite/
 sso-demo-client
+# Design handoff reference files (local only)
+design_handoff_sso_panrb/
+.design-sync/
+design-sync.config.json
