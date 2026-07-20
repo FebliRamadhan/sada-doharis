@@ -100,7 +100,8 @@ export const pegawaiService = {
 
       const row = rows[0];
       return {
-        master_pegawai_id: row.master_pegawai_id != null ? String(row.master_pegawai_id) : undefined,
+        master_pegawai_id:
+          row.master_pegawai_id != null ? String(row.master_pegawai_id) : undefined,
         nip: row.nip as string,
         nama: row.nama as string,
         nama_cetak: row.nama_cetak as string | undefined,

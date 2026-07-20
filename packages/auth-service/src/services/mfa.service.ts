@@ -118,11 +118,7 @@ export const mfaService = {
     if (!ivHex || !tagHex || !cipherHex) {
       throw new Error('Malformed encrypted MFA secret');
     }
-    const decipher = crypto.createDecipheriv(
-      'aes-256-gcm',
-      getEncKey(),
-      Buffer.from(ivHex, 'hex')
-    );
+    const decipher = crypto.createDecipheriv('aes-256-gcm', getEncKey(), Buffer.from(ivHex, 'hex'));
     decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
     return Buffer.concat([
       decipher.update(Buffer.from(cipherHex, 'hex')),

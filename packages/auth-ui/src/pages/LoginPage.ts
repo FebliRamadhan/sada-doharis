@@ -4,13 +4,7 @@
  * into #app via the `.admin-mode` container override so it replaces the shared
  * card shell. Login + MFA-gate + return_url logic preserved.
  */
-import {
-  endpoints,
-  apiRequest,
-  setStoredToken,
-  setStoredUser,
-  type AuthResponse,
-} from '../api';
+import { endpoints, apiRequest, setStoredToken, setStoredUser, type AuthResponse } from '../api';
 import { router, getAppContainer, getQueryParams } from '../router';
 import { MFA_TICKET_KEY, MFA_RETURN_URL_KEY } from './MFAVerifyPage';
 
