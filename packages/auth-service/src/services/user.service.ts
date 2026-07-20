@@ -378,6 +378,84 @@ export const userService = {
     logger.info('User deactivated', { userId: id });
   },
 
+  /** Admin: paginated user list with optional name/email search. */
+  async list(opts: { page?: number; limit?: number; search?: string }) {
+    const page = Math.max(1, opts.page ?? 1);
+    const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
+    const search = opts.search?.trim();
+    const where = search
+      ? {
+          OR: [
+            { email: { contains: search, mode: 'insensitive' as const } },
+            { name: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          userType: true,
+          isActive: true,
+          provider: true,
+          mfaEnabled: true,
+          createdAt: true,
+        },
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    return { users, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  },
+
+  /** Admin: activate/deactivate any user account. */
+  async setActive(id: string, isActive: boolean) {
+    const user = await prisma.user.update({
+      where: { id },
+      data: { isActive },
+      select: { id: true, email: true, name: true, userType: true, isActive: true },
+    });
+    logger.info('User active status changed', { userId: id, isActive });
+    return user;
+  },
+
+  /** Whether an email maps to a resettable local-password account. */
+  async hasLocalPassword(email: string): Promise<boolean> {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { password: true },
+    });
+    return Boolean(user?.password);
+  },
+
+  /**
+   * Reset a local user's password. Only applies to users that have a local
+   * password (local/external); LDAP/SPLP/social accounts have none to reset.
+   * Also clears any lockout. Returns false when there is no resettable account.
+   */
+  async resetPassword(email: string, newPassword: string): Promise<boolean> {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, password: true },
+    });
+    if (!user || !user.password) return false;
+
+    const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword, failedLoginAttempts: 0, lockedUntil: null },
+    });
+    logger.info('Password reset', { userId: user.id });
+    return true;
+  },
+
   /**
    * Remove sensitive fields from user object
    */
@@ -389,10 +467,19 @@ export const userService = {
     isActive: boolean;
     createdAt: Date;
     password?: string | null;
+    mfaEnabled?: boolean;
+    mfaSecret?: string | null;
+    mfaBackupCodes?: string[];
+    mfaEnabledAt?: Date | null;
   }) {
-    const { password, ...sanitized } = user;
+    // Never leak the TOTP secret or backup-code hashes. mfaEnabled is safe to expose
+    // (the login flow and admin UI need it).
+    const { password, mfaSecret, mfaBackupCodes, ...sanitized } = user;
+    void mfaSecret;
+    void mfaBackupCodes;
     return {
       ...sanitized,
+      mfaEnabled: sanitized.mfaEnabled ?? false,
       userType: sanitized.userType as UserType,
     };
   },

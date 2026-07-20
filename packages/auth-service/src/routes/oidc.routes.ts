@@ -118,6 +118,8 @@ router.get('/userinfo', async (req: Request, res: Response, next: NextFunction) 
           response.pegawai_id = pegawai.master_pegawai_id;
           response.nip = pegawai.nip;
           response.fullname = pegawai.nama_cetak;
+          response.jabatan = pegawai.jabatan;
+          response.unit_kerja = pegawai.unit_kerja;
         }
       } catch {
         // MySQL unavailable — skip employee claims rather than return a wrong nip

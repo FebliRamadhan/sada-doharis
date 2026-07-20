@@ -17,8 +17,27 @@ import { router } from '../router';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
+interface MfaUser {
+  id: string;
+  email: string;
+  name: string;
+  mfaEnabled: boolean;
+  mfaEnabledAt: string | null;
+}
+
+interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  userType: string;
+  isActive: boolean;
+  provider: string | null;
+  mfaEnabled: boolean;
+  createdAt: string;
+}
+
 interface AdminState {
-  view: 'clients' | 'logs';
+  view: 'clients' | 'logs' | 'mfa' | 'users';
   user: User | null;
   clients: OAuthClient[];
   clientsMeta: { page: number; limit: number; total: number; totalPages: number };
@@ -29,6 +48,13 @@ interface AdminState {
   logsClientId: string | null;
   logsClientName: string;
   logsActionFilter: string;
+  mfaUsers: MfaUser[];
+  mfaMeta: { page: number; limit: number; total: number; totalPages: number };
+  mfaLoading: boolean;
+  users: AdminUser[];
+  usersMeta: { page: number; limit: number; total: number; totalPages: number };
+  usersLoading: boolean;
+  usersSearch: string;
 }
 
 const state: AdminState = {
@@ -43,6 +69,13 @@ const state: AdminState = {
   logsClientId: null,
   logsClientName: '',
   logsActionFilter: '',
+  mfaUsers: [],
+  mfaMeta: { page: 1, limit: 20, total: 0, totalPages: 1 },
+  mfaLoading: false,
+  users: [],
+  usersMeta: { page: 1, limit: 20, total: 0, totalPages: 1 },
+  usersLoading: false,
+  usersSearch: '',
 };
 
 // ─── Entry Point ──────────────────────────────────────────────────────────────
@@ -118,6 +151,22 @@ function buildShell(): string {
         ${iconLog(20)}
         <span>Log Aktivitas</span>
       </button>
+
+      <button id="nav-users" data-view="users"
+        class="admin-nav-btn"
+        style="width:100%;display:flex;align-items:center;gap:0.75rem;padding:0.625rem 0.75rem;font-size:0.875rem;cursor:pointer"
+        aria-label="Manajemen User">
+        ${iconMonitor(20)}
+        <span>Manajemen User</span>
+      </button>
+
+      <button id="nav-mfa" data-view="mfa"
+        class="admin-nav-btn"
+        style="width:100%;display:flex;align-items:center;gap:0.75rem;padding:0.625rem 0.75rem;font-size:0.875rem;cursor:pointer"
+        aria-label="Manajemen MFA">
+        ${iconLog(20)}
+        <span>Manajemen MFA</span>
+      </button>
     </nav>
 
     <div style="margin-top:auto;padding:0 0.25rem">
@@ -171,6 +220,10 @@ function attachSidebarNav(): void {
 
     if (view === 'logs') {
       await loadLogs(1);
+    } else if (view === 'mfa') {
+      await loadMfaUsers(1);
+    } else if (view === 'users') {
+      await loadUsers(1);
     } else {
       await loadClients(state.clientsMeta.page);
     }
@@ -219,6 +272,12 @@ function renderMain(): void {
   if (state.view === 'clients') {
     el.innerHTML = renderClientsView();
     attachClientsEvents();
+  } else if (state.view === 'mfa') {
+    el.innerHTML = renderMfaView();
+    attachMfaEvents();
+  } else if (state.view === 'users') {
+    el.innerHTML = renderUsersView();
+    attachUsersEvents();
   } else {
     el.innerHTML = renderLogsView();
     attachLogsEvents();
@@ -357,7 +416,7 @@ function renderClientRow(c: OAuthClient): string {
       <td style="padding:1.25rem 1.5rem"><div style="display:flex;flex-wrap:wrap;gap:0.25rem">${scopePills}</div></td>
       <td style="padding:1.25rem 1.5rem;font-size:0.75rem;white-space:nowrap;color:#94A3B8">${created}</td>
       <td style="padding:1.25rem 1.5rem">
-        <div class="row-actions" style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;opacity:0.3;transition:opacity 200ms">
+        <div class="row-actions" style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem">
           <button class="vault-icon-btn" style="padding:0.375rem;border-radius:0.5rem;color:#64748B;cursor:pointer;border:none;background:transparent" data-action="view-logs" data-id="${c.id}" data-name="${escHtml(c.name)}"
                   title="Lihat Log" aria-label="Lihat Log">${iconLog(15)}</button>
           <button class="vault-icon-btn" style="padding:0.375rem;border-radius:0.5rem;color:#64748B;cursor:pointer;border:none;background:transparent" data-action="edit" data-id="${c.id}"
@@ -559,6 +618,313 @@ function attachLogsEvents(): void {
   });
 }
 
+// ─── User Management View ─────────────────────────────────────────────────────
+
+async function loadUsers(page: number): Promise<void> {
+  state.usersLoading = true;
+  renderMain();
+  const q = state.usersSearch ? `&search=${encodeURIComponent(state.usersSearch)}` : '';
+  const r = await apiRequest<AdminUser[]>(
+    `${endpoints.users}?page=${page}&limit=${state.usersMeta.limit}${q}`
+  );
+  state.usersLoading = false;
+  if (r.success && r.data) {
+    state.users = r.data;
+    if (r.meta) state.usersMeta = r.meta;
+  } else {
+    state.users = [];
+    showToast(r.error ?? 'Gagal memuat pengguna.', 'error');
+  }
+}
+
+function renderUsersView(): string {
+  const activeOnPage = state.users.filter((u) => u.isActive).length;
+
+  const header = `
+    <header style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:1.5rem;margin-bottom:2.5rem">
+      <div>
+        <h2 style="font-size:1.875rem;font-weight:800;letter-spacing:-0.025em;margin-bottom:0.375rem;color:#01347C;font-family:'Plus Jakarta Sans',Manrope,sans-serif">
+          Manajemen User
+        </h2>
+        <p style="font-size:0.875rem;font-weight:500;color:#64748B">
+          Kelola seluruh akun pengguna SSO — cari, aktifkan, atau nonaktifkan akses.
+        </p>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <input id="users-search" type="text" placeholder="Cari nama / email..." value="${escHtml(state.usersSearch)}"
+          style="${S.input};width:16rem" aria-label="Cari pengguna">
+        <button id="users-search-btn" style="padding:0.625rem 1rem;border-radius:0.75rem;font-size:0.875rem;font-weight:600;color:#fff;border:none;cursor:pointer;background:linear-gradient(135deg,#01347C,#005598)">Cari</button>
+      </div>
+    </header>`;
+
+  if (state.usersLoading) return header + loadingHTML();
+
+  return `${header}
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;margin-bottom:2.5rem">
+      ${statCard(String(state.usersMeta.total), 'Total Pengguna', 'Seluruh akun terdaftar', '#01347C')}
+      ${statCard(String(activeOnPage), 'Aktif', 'Di halaman ini', '#15803D')}
+      ${statCard(String(state.users.length - activeOnPage), 'Nonaktif', 'Di halaman ini', '#B45309')}
+    </div>
+
+    <div style="${S.card};overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;text-align:left;border-collapse:collapse" id="users-table">
+          <thead>
+            <tr style="background:rgba(1,52,124,0.02)">
+              <th style="${S.th}">Pengguna</th>
+              <th style="${S.th}">Email</th>
+              <th style="${S.th}">Tipe</th>
+              <th style="${S.th}">Status</th>
+              <th style="${S.th};text-align:right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              state.users.length === 0
+                ? `<tr><td colspan="5">${emptyState('Tidak ada pengguna ditemukan.')}</td></tr>`
+                : state.users.map(renderUserRow).join('')
+            }
+          </tbody>
+        </table>
+      </div>
+      ${renderPagination(state.usersMeta, 'users')}
+    </div>`;
+}
+
+function renderUserRow(u: AdminUser): string {
+  const initials = (u.name?.charAt(0) || u.email.charAt(0) || '?').toUpperCase();
+  const isSelf = state.user?.id === u.id;
+
+  const status = u.isActive
+    ? `<span style="${S.badge};background:rgba(21,128,61,0.08);color:#15803D"><span style="width:6px;height:6px;border-radius:50%;background:#15803D"></span>Aktif</span>`
+    : `<span style="${S.badge};background:rgba(180,83,9,0.08);color:#B45309"><span style="width:6px;height:6px;border-radius:50%;background:#B45309"></span>Nonaktif</span>`;
+
+  const action = isSelf
+    ? `<span style="font-size:0.75rem;color:#CBD5E1">Akun Anda</span>`
+    : u.isActive
+      ? `<button class="vault-icon-btn" style="padding:0.375rem 0.75rem;border-radius:0.5rem;color:#DC2626;cursor:pointer;border:none;background:transparent;font-size:0.75rem;font-weight:600" data-action="toggle-user" data-id="${u.id}" data-active="false" data-name="${escHtml(u.name || u.email)}">Nonaktifkan</button>`
+      : `<button class="vault-icon-btn" style="padding:0.375rem 0.75rem;border-radius:0.5rem;color:#15803D;cursor:pointer;border:none;background:transparent;font-size:0.75rem;font-weight:600" data-action="toggle-user" data-id="${u.id}" data-active="true" data-name="${escHtml(u.name || u.email)}">Aktifkan</button>`;
+
+  return `
+    <tr class="vault-row" style="${S.row}">
+      <td style="padding:1rem 1.5rem">
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <div style="width:2rem;height:2rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0;background:rgba(1,52,124,0.07);color:#01347C">${initials}</div>
+          <span style="font-size:0.875rem;font-weight:600;color:#191C1D">${escHtml(u.name || '—')}</span>
+        </div>
+      </td>
+      <td style="padding:1rem 1.5rem;font-size:0.8125rem;color:#64748B">${escHtml(u.email)}</td>
+      <td style="padding:1rem 1.5rem;font-size:0.75rem;color:#94A3B8">${escHtml(u.userType)}</td>
+      <td style="padding:1rem 1.5rem">${status}</td>
+      <td style="padding:1rem 1.5rem;text-align:right">
+        <div class="row-actions" style="display:flex;justify-content:flex-end">${action}</div>
+      </td>
+    </tr>`;
+}
+
+function attachUsersEvents(): void {
+  const doSearch = async () => {
+    const input = document.getElementById('users-search') as HTMLInputElement | null;
+    state.usersSearch = input?.value.trim() ?? '';
+    await loadUsers(1);
+    renderMain();
+  };
+  document.getElementById('users-search-btn')?.addEventListener('click', doSearch);
+  document.getElementById('users-search')?.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') void doSearch();
+  });
+
+  document.getElementById('users-table')?.addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-action="toggle-user"]');
+    if (!btn) return;
+    const id = btn.dataset['id'] ?? '';
+    const isActive = btn.dataset['active'] === 'true';
+    btn.disabled = true;
+    const r = await apiRequest(endpoints.userStatus(id), {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive }),
+    });
+    if (!r.success) {
+      showToast(r.error ?? 'Gagal mengubah status.', 'error');
+      btn.disabled = false;
+      return;
+    }
+    showToast(isActive ? 'Pengguna diaktifkan.' : 'Pengguna dinonaktifkan.', 'success');
+    await loadUsers(state.usersMeta.page);
+    renderMain();
+  });
+
+  paginationListeners('users', async (p) => {
+    await loadUsers(p);
+    renderMain();
+  });
+}
+
+// ─── MFA Management View ──────────────────────────────────────────────────────
+
+async function loadMfaUsers(page: number): Promise<void> {
+  state.mfaLoading = true;
+  const r = await apiRequest<{
+    users: MfaUser[];
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  }>(`${endpoints.adminMfaUsers}?page=${page}&limit=${state.mfaMeta.limit}`);
+  state.mfaLoading = false;
+  if (r.success && r.data) {
+    state.mfaUsers = r.data.users ?? [];
+    state.mfaMeta = {
+      page: r.data.page,
+      limit: r.data.limit,
+      total: r.data.total,
+      totalPages: r.data.totalPages,
+    };
+  }
+}
+
+function renderMfaView(): string {
+  const enabledOnPage = state.mfaUsers.filter((u) => u.mfaEnabled).length;
+  const pendingOnPage = state.mfaUsers.length - enabledOnPage;
+
+  const header = `
+    <header style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:1.5rem;margin-bottom:2.5rem">
+      <div>
+        <h2 style="font-size:1.875rem;font-weight:800;letter-spacing:-0.025em;margin-bottom:0.375rem;color:#01347C;font-family:'Plus Jakarta Sans',Manrope,sans-serif">
+          Manajemen MFA
+        </h2>
+        <p style="font-size:0.875rem;font-weight:500;color:#64748B">
+          MFA wajib untuk semua pengguna internal. Reset bila pengguna kehilangan perangkat — mereka akan dipaksa enroll ulang saat login berikutnya.
+        </p>
+      </div>
+    </header>`;
+
+  if (state.mfaLoading) return header + loadingHTML();
+
+  return `${header}
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;margin-bottom:2.5rem">
+      ${statCard(String(state.mfaMeta.total), 'Total Internal', 'Pengguna LDAP terdaftar', '#01347C')}
+      ${statCard(String(enabledOnPage), 'MFA Aktif', 'Di halaman ini', '#15803D')}
+      ${statCardFeatured(String(pendingOnPage), 'Belum Enroll', 'Di halaman ini')}
+    </div>
+
+    <div style="${S.card};overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;text-align:left;border-collapse:collapse" id="mfa-table">
+          <thead>
+            <tr style="background:rgba(1,52,124,0.02)">
+              <th style="${S.th}">Pengguna</th>
+              <th style="${S.th}">Email</th>
+              <th style="${S.th}">Status MFA</th>
+              <th style="${S.th}">Aktif Sejak</th>
+              <th style="${S.th};text-align:right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              state.mfaUsers.length === 0
+                ? `<tr><td colspan="5">${emptyState('Belum ada pengguna internal.')}</td></tr>`
+                : state.mfaUsers.map(renderMfaRow).join('')
+            }
+          </tbody>
+        </table>
+      </div>
+      ${renderPagination(state.mfaMeta, 'mfa')}
+    </div>`;
+}
+
+function renderMfaRow(u: MfaUser): string {
+  const initials = (u.name?.charAt(0) || u.email.charAt(0) || '?').toUpperCase();
+
+  const badge = u.mfaEnabled
+    ? `<span style="${S.badge};background:rgba(21,128,61,0.08);color:#15803D">
+         <span style="width:6px;height:6px;border-radius:50%;background:#15803D"></span>Aktif
+       </span>`
+    : `<span style="${S.badge};background:rgba(180,83,9,0.08);color:#B45309">
+         <span style="width:6px;height:6px;border-radius:50%;background:#B45309"></span>Belum enroll
+       </span>`;
+
+  const since = u.mfaEnabledAt
+    ? new Date(u.mfaEnabledAt).toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : '—';
+
+  const action = u.mfaEnabled
+    ? `<button class="vault-icon-btn" style="padding:0.375rem 0.75rem;border-radius:0.5rem;color:#DC2626;cursor:pointer;border:none;background:transparent;font-size:0.75rem;font-weight:600"
+              data-action="reset-mfa" data-id="${u.id}" data-name="${escHtml(u.name || u.email)}"
+              title="Reset MFA" aria-label="Reset MFA">Reset MFA</button>`
+    : `<span style="font-size:0.75rem;color:#CBD5E1">—</span>`;
+
+  return `
+    <tr class="vault-row" style="${S.row}">
+      <td style="padding:1rem 1.5rem">
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <div style="width:2rem;height:2rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0;background:rgba(1,52,124,0.07);color:#01347C">${initials}</div>
+          <span style="font-size:0.875rem;font-weight:600;color:#191C1D">${escHtml(u.name || '—')}</span>
+        </div>
+      </td>
+      <td style="padding:1rem 1.5rem;font-size:0.8125rem;color:#64748B">${escHtml(u.email)}</td>
+      <td style="padding:1rem 1.5rem">${badge}</td>
+      <td style="padding:1rem 1.5rem;font-size:0.75rem;color:#94A3B8">${since}</td>
+      <td style="padding:1rem 1.5rem;text-align:right">
+        <div class="row-actions" style="display:flex;justify-content:flex-end">${action}</div>
+      </td>
+    </tr>`;
+}
+
+function attachMfaEvents(): void {
+  document.getElementById('mfa-table')?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-action="reset-mfa"]');
+    if (!btn) return;
+    openMfaResetConfirm(btn.dataset['id'] ?? '', btn.dataset['name'] ?? '');
+  });
+
+  paginationListeners('mfa', async (p) => {
+    await loadMfaUsers(p);
+    renderMain();
+  });
+}
+
+function openMfaResetConfirm(id: string, name: string): void {
+  openModal(`
+    <div style="text-align:center;padding:0.5rem 0">
+      <div style="width:3.5rem;height:3.5rem;border-radius:1rem;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;background:rgba(180,83,9,0.06)">
+        <span style="color:#B45309">${iconRefresh(28)}</span>
+      </div>
+      <h3 style="font-size:1.25rem;font-weight:800;margin-bottom:0.5rem;color:#191C1D;font-family:'Plus Jakarta Sans',Manrope,sans-serif">Reset MFA?</h3>
+      <p style="font-size:0.875rem;margin-bottom:0.25rem;color:#64748B">
+        Reset MFA untuk <strong style="color:#191C1D">${escHtml(name)}</strong>.
+      </p>
+      <p style="font-size:0.75rem;color:#94A3B8">Pengguna akan dipaksa mendaftarkan ulang authenticator saat login berikutnya.</p>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.75rem;margin-top:1.5rem">
+      <button style="display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;padding:0.625rem 1.25rem;border-radius:0.75rem;font-size:0.875rem;font-weight:600;color:#64748B;background:transparent;border:none;cursor:pointer" id="modal-cancel">Batal</button>
+      <button style="padding:0.625rem 1.25rem;border-radius:0.75rem;font-size:0.875rem;font-weight:600;color:#fff;cursor:pointer;border:none;background:#B45309" id="modal-submit">
+        <span id="modal-submit-txt">Reset MFA</span>
+      </button>
+    </div>`);
+
+  document.getElementById('modal-cancel')?.addEventListener('click', closeModal);
+  document.getElementById('modal-submit')?.addEventListener('click', async () => {
+    setSubmitLoading(true);
+    const r = await apiRequest(endpoints.adminMfaDisable(id), { method: 'POST' });
+    setSubmitLoading(false);
+    if (!r.success) {
+      showToast(r.error ?? 'Gagal mereset MFA.', 'error');
+      return;
+    }
+    closeModal();
+    showToast('MFA pengguna direset.', 'success');
+    await loadMfaUsers(state.mfaMeta.page);
+    renderMain();
+  });
+}
+
 // ─── Pagination ───────────────────────────────────────────────────────────────
 
 function renderPagination(
@@ -609,7 +975,8 @@ function renderPagination(
 }
 
 function paginationListeners(ns: string, cb: (page: number) => Promise<void>): void {
-  const meta = ns === 'clients' ? state.clientsMeta : state.logsMeta;
+  const meta =
+    ns === 'clients' ? state.clientsMeta : ns === 'mfa' ? state.mfaMeta : state.logsMeta;
   document.getElementById(`${ns}-prev`)?.addEventListener('click', async () => {
     if (meta.page > 1) await cb(meta.page - 1);
   });

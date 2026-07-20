@@ -6,14 +6,28 @@ export const API_BASE = (import.meta.env.VITE_API_URL as string) ?? '/api';
 // API endpoints
 export const endpoints = {
   login: `${API_BASE}/auth/login`,
+  register: `${API_BASE}/auth/register`,
+  forgotPassword: `${API_BASE}/auth/forgot-password`,
+  verifyResetCode: `${API_BASE}/auth/verify-reset-code`,
+  resetPassword: `${API_BASE}/auth/reset-password`,
   ldapLogin: `${API_BASE}/auth/ldap/login`,
   me: `${API_BASE}/auth/me`,
   logout: `${API_BASE}/auth/logout`,
   authorize: `${API_BASE}/oauth/authorize`,
   token: `${API_BASE}/oauth/token`,
   clients: `${API_BASE}/clients`,
+  users: `${API_BASE}/users`,
+  userStatus: (id: string) => `${API_BASE}/users/${id}/status`,
   clientLogs: (id: string) => `${API_BASE}/clients/${id}/logs`,
   auditLogs: `${API_BASE}/audit-logs`,
+  // MFA (TOTP)
+  mfaVerifyLogin: `${API_BASE}/auth/mfa/verify-login`,
+  mfaSetup: `${API_BASE}/auth/mfa/setup`,
+  mfaEnable: `${API_BASE}/auth/mfa/enable`,
+  mfaStatus: `${API_BASE}/auth/mfa/status`,
+  mfaDisable: `${API_BASE}/auth/mfa/disable`,
+  adminMfaUsers: `${API_BASE}/admin/mfa/users`,
+  adminMfaDisable: (id: string) => `${API_BASE}/admin/mfa/users/${id}/disable`,
 };
 
 // Storage keys

@@ -8,6 +8,7 @@ import { tokenService } from '../services/token.service.js';
 import { splpService } from '../services/splp.service.js';
 import { ldapService } from '../services/ldap.service.js';
 import { sessionService } from '../services/session.service.js';
+import { maybeRequireMfa } from '../services/login-issuer.service.js';
 import { prisma } from '../config/database.js';
 import { getRedis } from '../config/redis.js';
 import { sendSuccess, sendError, ValidationError } from '@sada/shared';
@@ -112,8 +113,11 @@ router.post('/login', csrfProtect, async (req: Request, res: Response, next: Nex
 
     const user = await userService.loginWithPassword(parsed.data.email, parsed.data.password);
 
-    // Generate tokens
+    // MFA gate (INTERNAL users): if required, response is sent here and no token is issued.
     const scopes = ['profile', 'email'];
+    if (await maybeRequireMfa(res, user, scopes)) return;
+
+    // Generate tokens
     const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
     const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
 
@@ -212,8 +216,11 @@ router.post('/ldap/login', csrfProtect, async (req: Request, res: Response, next
 
     const user = await userService.loginWithLdap(parsed.data.username, parsed.data.password);
 
-    // Generate tokens
+    // MFA gate (INTERNAL users): if required, response is sent here and no token is issued.
     const scopes = ['profile', 'email', 'internal'];
+    if (await maybeRequireMfa(res, user, scopes)) return;
+
+    // Generate tokens
     const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
     const refreshToken = tokenService.generateRefreshToken(user.id, 'user');
 
@@ -445,6 +452,120 @@ router.post('/register', csrfProtect, async (req: Request, res: Response, next: 
       },
       201
     );
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ===========================================================================
+// Password reset (forgot password) — OTP via email.
+// NOTE: no mailer is wired yet, so the OTP is logged and (in non-production)
+// returned in the response as `dev_code` for testing. Wire an email transport
+// and drop `dev_code` before production.
+// ===========================================================================
+const PWRESET_PREFIX = 'pwreset:';
+const PWRESET_TTL = 600; // 10 minutes
+const PWRESET_IS_PROD = process.env['NODE_ENV'] === 'production';
+
+const forgotPasswordSchema = z.object({ email: z.string().email() });
+const verifyResetSchema = z.object({ email: z.string().email(), code: z.string().min(4) });
+const resetPasswordSchema = z.object({
+  email: z.string().email(),
+  code: z.string().min(4),
+  password: z.string().min(8),
+});
+
+/**
+ * @swagger
+ * /auth/forgot-password:
+ *   post:
+ *     summary: Request a password reset code
+ *     tags: [Auth]
+ */
+router.post('/forgot-password', csrfProtect, async (req: Request, res: Response, next) => {
+  try {
+    const parsed = forgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
+    }
+    const email = parsed.data.email.toLowerCase();
+
+    // Only issue a code for accounts that actually have a local password.
+    const resettable = await userService.hasLocalPassword(email);
+    let devCode: string | undefined;
+    if (resettable) {
+      const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+      await getRedis().setex(`${PWRESET_PREFIX}${email}`, PWRESET_TTL, code);
+      // TODO: send `code` to `email` via mailer. For now, log it.
+      console.info(`[password-reset] OTP for ${email}: ${code}`);
+      if (!PWRESET_IS_PROD) devCode = code;
+    }
+
+    // Always return success to avoid leaking which emails are registered.
+    sendSuccess(res, { sent: true, ...(devCode ? { dev_code: devCode } : {}) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /auth/verify-reset-code:
+ *   post:
+ *     summary: Verify a password reset code (without consuming it)
+ *     tags: [Auth]
+ */
+router.post('/verify-reset-code', async (req: Request, res: Response, next) => {
+  try {
+    const parsed = verifyResetSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
+    }
+    const email = parsed.data.email.toLowerCase();
+    const stored = await getRedis().get(`${PWRESET_PREFIX}${email}`);
+    if (!stored || stored !== parsed.data.code) {
+      throw new ValidationError('Kode tidak valid atau telah kedaluwarsa');
+    }
+    sendSuccess(res, { valid: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /auth/reset-password:
+ *   post:
+ *     summary: Set a new password using a verified reset code
+ *     tags: [Auth]
+ */
+router.post('/reset-password', csrfProtect, async (req: Request, res: Response, next) => {
+  try {
+    const parsed = resetPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
+    }
+    const email = parsed.data.email.toLowerCase();
+    const key = `${PWRESET_PREFIX}${email}`;
+    const stored = await getRedis().get(key);
+    if (!stored || stored !== parsed.data.code) {
+      throw new ValidationError('Kode tidak valid atau telah kedaluwarsa');
+    }
+
+    const ok = await userService.resetPassword(email, parsed.data.password);
+    if (!ok) {
+      throw new ValidationError('Akun tidak dapat direset');
+    }
+    await getRedis().del(key);
+
+    void auditService.log({
+      action: AUDIT_ACTIONS.PASSWORD_RESET,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      details: { email },
+    });
+
+    sendSuccess(res, { reset: true });
   } catch (error) {
     next(error);
   }

@@ -206,6 +206,8 @@ export interface OIDCUserInfoResponse {
   pegawai_id?: string;
   nip?: string;
   fullname?: string;
+  jabatan?: string;
+  unit_kerja?: string;
 }
 
 export interface TokenIntrospectionResponse {

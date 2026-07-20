@@ -12,6 +12,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { requestId } from './middleware/requestId.js';
 import { oauthRoutes } from './routes/oauth.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
+import { mfaRoutes } from './routes/mfa.routes.js';
 import { clientRoutes } from './routes/client.routes.js';
 import { userRoutes } from './routes/user.routes.js';
 import { healthRoutes } from './routes/health.routes.js';
@@ -102,6 +103,8 @@ app.use('/', oidcRoutes); // /.well-known/jwks.json (root-level OIDC discovery)
 app.use('/oauth', oauthRoutes);
 app.use('/oauth', oidcRoutes); // /oauth/userinfo, /oauth/introspect, /oauth/logout
 app.use('/auth', authRoutes);
+// MFA routes declare absolute paths (/auth/mfa/*, /admin/mfa/*) → mount at root.
+app.use('/', mfaRoutes);
 app.use('/clients', clientRoutes);
 app.use('/users', userRoutes);
 app.use('/audit-logs', auditRoutes);

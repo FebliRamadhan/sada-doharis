@@ -72,16 +72,24 @@ export const pegawaiService = {
     try {
       const [rows] = await connection.execute<mysql.RowDataPacket[]>(
         `SELECT
-                    master_pegawai_id,
-                    nip,
-                    nama,
-                    nama_cetak,
-                    email_kantor AS email,
-                    unit_staf_id,
-                    photo AS foto,
-                    dihapus
-                FROM master_pegawai
-                WHERE (email_kantor = ? OR email_pribadi = ?) AND dihapus = 'tidak'
+                    p.master_pegawai_id,
+                    p.nip,
+                    p.nama,
+                    p.nama_cetak,
+                    p.email_kantor AS email,
+                    p.unit_staf_id,
+                    p.photo AS foto,
+                    p.dihapus,
+                    us.nama_lengkap AS jabatan,
+                    COALESCE(
+                        NULLIF(us.nama_unit_kerja, ''),
+                        NULLIF(pu.nama_unit_kerja, ''),
+                        pu.nama_lengkap
+                    ) AS unit_kerja
+                FROM master_pegawai p
+                LEFT JOIN daf_unit_staf us ON us.unit_staf_id = p.unit_staf_id
+                LEFT JOIN daf_unit_staf pu ON pu.unit_staf_id = us.parent_id_unit_kerja
+                WHERE (p.email_kantor = ? OR p.email_pribadi = ?) AND p.dihapus = 'tidak'
                 LIMIT 1`,
         [email.toLowerCase(), email.toLowerCase()]
       );
@@ -97,6 +105,8 @@ export const pegawaiService = {
         nama: row.nama as string,
         nama_cetak: row.nama_cetak as string | undefined,
         email: row.email as string,
+        jabatan: (row.jabatan as string | null) ?? undefined,
+        unit_kerja: (row.unit_kerja as string | null) ?? undefined,
         unit_staf_id: row.unit_staf_id as number | undefined,
         foto: row.foto as string | undefined,
         status: 'aktif',
@@ -116,15 +126,23 @@ export const pegawaiService = {
     try {
       const [rows] = await connection.execute<mysql.RowDataPacket[]>(
         `SELECT
-                    nip,
-                    nama,
-                    nama_cetak,
-                    email_kantor AS email,
-                    unit_staf_id,
-                    photo AS foto,
-                    dihapus
-                FROM master_pegawai
-                WHERE nip = ? AND dihapus = 'tidak'
+                    p.nip,
+                    p.nama,
+                    p.nama_cetak,
+                    p.email_kantor AS email,
+                    p.unit_staf_id,
+                    p.photo AS foto,
+                    p.dihapus,
+                    us.nama_lengkap AS jabatan,
+                    COALESCE(
+                        NULLIF(us.nama_unit_kerja, ''),
+                        NULLIF(pu.nama_unit_kerja, ''),
+                        pu.nama_lengkap
+                    ) AS unit_kerja
+                FROM master_pegawai p
+                LEFT JOIN daf_unit_staf us ON us.unit_staf_id = p.unit_staf_id
+                LEFT JOIN daf_unit_staf pu ON pu.unit_staf_id = us.parent_id_unit_kerja
+                WHERE p.nip = ? AND p.dihapus = 'tidak'
                 LIMIT 1`,
         [nip]
       );
@@ -139,6 +157,8 @@ export const pegawaiService = {
         nama: row.nama as string,
         nama_cetak: row.nama_cetak as string | undefined,
         email: row.email as string,
+        jabatan: (row.jabatan as string | null) ?? undefined,
+        unit_kerja: (row.unit_kerja as string | null) ?? undefined,
         unit_staf_id: row.unit_staf_id as number | undefined,
         foto: row.foto as string | undefined,
         status: 'aktif',
