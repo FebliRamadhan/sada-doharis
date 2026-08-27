@@ -4,6 +4,7 @@
  */
 import './style.css';
 import { router } from './router';
+import { loadRuntimeConfig, isRegistrationEnabled } from './runtime-config';
 import {
   HomePage,
   LoginPage,
@@ -29,7 +30,15 @@ router['resolve'] = async function () {
 router
   .on('/', HomePage)
   .on('/login', LoginPage)
-  .on('/register', RegisterPage)
+  // Guarded, not removed: hiding the link is not enough — a bookmarked or
+  // hand-typed /register must not render a form the server answers with 404.
+  .on('/register', () => {
+    if (!isRegistrationEnabled()) {
+      router.navigate('/login', true);
+      return;
+    }
+    RegisterPage();
+  })
   .on('/forgot-password', ForgotPasswordPage)
   .on('/portal', PortalPage)
   .on('/authorize', AuthorizePage)
@@ -42,9 +51,15 @@ router
     router.navigate('/', true);
   });
 
-// Start router when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => router.start());
-} else {
+// Load runtime config before the first route renders, so pages never flash a
+// signup path that is switched off. A failed fetch leaves it disabled.
+async function start(): Promise<void> {
+  await loadRuntimeConfig();
   router.start();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => void start());
+} else {
+  void start();
 }

@@ -263,6 +263,15 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
       redirectUrl.searchParams.set('state', state);
     }
 
+    // Sama seperti cabang consent di atas: navigasi browser butuh 302, bukan
+    // JSON. Cabang ini paling mudah terlewat karena baru terpicu setelah
+    // consent TERSIMPAN — login pertama lewat layar persetujuan (XHR) tampak
+    // benar, lalu login berikutnya mendarat di JSON mentah karena consent
+    // sudah ada dan alurnya tidak pernah lagi melewati auth-ui.
+    if (isBrowserNavigation(req)) {
+      return res.redirect(redirectUrl.toString());
+    }
+
     return sendSuccess(res, { redirect_url: redirectUrl.toString() });
   } catch (error) {
     next(error);
