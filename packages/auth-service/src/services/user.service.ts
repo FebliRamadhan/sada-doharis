@@ -379,18 +379,30 @@ export const userService = {
   },
 
   /** Admin: paginated user list with optional name/email search. */
-  async list(opts: { page?: number; limit?: number; search?: string }) {
+  async list(opts: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    isActive?: boolean;
+    userType?: UserType;
+    mfaEnabled?: boolean;
+  }) {
     const page = Math.max(1, opts.page ?? 1);
     const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
     const search = opts.search?.trim();
-    const where = search
-      ? {
-          OR: [
-            { email: { contains: search, mode: 'insensitive' as const } },
-            { name: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }
-      : {};
+
+    // Satu `where` dipakai bersama oleh daftar dan seluruh hitungannya, supaya
+    // kartu statistik selalu berbicara tentang himpunan yang sedang dilihat.
+    const where: Record<string, unknown> = {};
+    if (search) {
+      where['OR'] = [
+        { email: { contains: search, mode: 'insensitive' as const } },
+        { name: { contains: search, mode: 'insensitive' as const } },
+      ];
+    }
+    if (opts.isActive !== undefined) where['isActive'] = opts.isActive;
+    if (opts.userType) where['userType'] = opts.userType;
+    if (opts.mfaEnabled !== undefined) where['mfaEnabled'] = opts.mfaEnabled;
 
     const [users, total, activeCount] = await Promise.all([
       prisma.user.findMany({

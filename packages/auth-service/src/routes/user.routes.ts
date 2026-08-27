@@ -9,6 +9,7 @@ import {
   ValidationError,
   UnauthorizedError,
   ForbiddenError,
+  type UserType,
 } from '@sada/shared';
 import { adminGuard } from '../middleware/adminGuard.js';
 
@@ -23,6 +24,18 @@ const updateUserSchema = z.object({
 const setStatusSchema = z.object({ isActive: z.boolean() });
 
 /**
+ * Filter daftar pengguna. Semuanya opsional dan 'all' berarti tidak menyaring,
+ * sehingga URL tanpa parameter berperilaku persis seperti sebelumnya.
+ * Nilai di luar daftar ditolak, bukan diabaikan diam-diam — filter yang gagal
+ * tanpa suara akan menampilkan data yang lebih luas daripada yang diminta.
+ */
+const listFilterSchema = z.object({
+  status: z.enum(['all', 'active', 'inactive']).optional(),
+  type: z.enum(['all', 'INTERNAL', 'GOVERNMENT', 'EXTERNAL']).optional(),
+  mfa: z.enum(['all', 'enabled', 'pending']).optional(),
+});
+
+/**
  * @swagger
  * /users:
  *   get:
@@ -34,7 +47,25 @@ router.get('/', adminGuard, async (req: Request, res: Response, next: NextFuncti
     const page = parseInt((req.query['page'] as string) ?? '1', 10);
     const limit = parseInt((req.query['limit'] as string) ?? '20', 10);
     const search = (req.query['search'] as string) ?? undefined;
-    const { users, meta } = await userService.list({ page, limit, search });
+
+    const filters = listFilterSchema.safeParse({
+      status: req.query['status'],
+      type: req.query['type'],
+      mfa: req.query['mfa'],
+    });
+    if (!filters.success) {
+      throw new ValidationError('Invalid filter', filters.error.flatten().fieldErrors);
+    }
+    const { status, type, mfa } = filters.data;
+
+    const { users, meta } = await userService.list({
+      page,
+      limit,
+      search,
+      ...(status && status !== 'all' ? { isActive: status === 'active' } : {}),
+      ...(type && type !== 'all' ? { userType: type as UserType } : {}),
+      ...(mfa && mfa !== 'all' ? { mfaEnabled: mfa === 'enabled' } : {}),
+    });
     sendPaginated(res, users, meta.page, meta.limit, meta.total, {
       active: meta.activeCount,
       inactive: meta.inactiveCount,
