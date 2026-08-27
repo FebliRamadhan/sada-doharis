@@ -11,12 +11,22 @@ import { sessionService } from '../services/session.service.js';
 import { maybeRequireMfa } from '../services/login-issuer.service.js';
 import { prisma } from '../config/database.js';
 import { getRedis } from '../config/redis.js';
-import { sendSuccess, sendError, ValidationError } from '@sada/shared';
+import { sendSuccess, sendError, ValidationError, NotFoundError } from '@sada/shared';
 import { auditService, AUDIT_ACTIONS } from '../services/audit.service.js';
 import { isAdminEmail } from '../middleware/adminGuard.js';
 import { csrfProtect } from '../middleware/csrf.js';
 
 const router = Router();
+
+/**
+ * Self-service registration (POST /auth/register) is OFF unless explicitly
+ * switched on. Absent or malformed env means closed — the safe state here is
+ * "no anonymous accounts", the opposite of MFA_REQUIRED_INTERNAL whose safe
+ * state is "on". Read per request so flipping the env only needs a restart.
+ */
+export function isRegistrationEnabled(): boolean {
+  return process.env['REGISTRATION_ENABLED'] === 'true';
+}
 
 // Lazy-cached system client id to avoid per-request DB lookups
 let systemClientId: string | null = null;
@@ -47,6 +57,36 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   name: z.string().min(1),
+});
+
+/**
+ * @swagger
+ * /auth/config:
+ *   get:
+ *     summary: Public runtime configuration
+ *     description: >
+ *       Feature flags the login UI needs before a user is authenticated.
+ *       Contains no secrets and no user data. Exists so auth-ui can follow
+ *       REGISTRATION_ENABLED at runtime instead of baking it in at build time.
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Runtime configuration
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     registration_enabled:
+ *                       type: boolean
+ */
+router.get('/config', (_req: Request, res: Response) => {
+  sendSuccess(res, { registration_enabled: isRegistrationEnabled() });
 });
 
 /**
@@ -359,7 +399,10 @@ router.get('/splp/callback', async (req: Request, res: Response, next: NextFunct
  * /auth/register:
  *   post:
  *     summary: Register new user
- *     description: Create a new user account with email and password
+ *     description: >
+ *       Create a new user account with email and password. Disabled unless
+ *       REGISTRATION_ENABLED=true; when disabled the route answers 404.
+ *       Check GET /auth/config before offering registration in a UI.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -404,11 +447,18 @@ router.get('/splp/callback', async (req: Request, res: Response, next: NextFunct
  *                       type: integer
  *                     refresh_token:
  *                       type: string
+ *       404:
+ *         description: Self-service registration is disabled
  *       409:
  *         description: Email already registered
  */
 router.post('/register', csrfProtect, async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // 404 rather than 403: a disabled feature should not announce itself.
+    if (!isRegistrationEnabled()) {
+      throw new NotFoundError('Route');
+    }
+
     const parsed = registerSchema.safeParse(req.body);
 
     if (!parsed.success) {

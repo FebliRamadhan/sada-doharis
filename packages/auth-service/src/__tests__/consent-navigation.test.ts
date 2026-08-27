@@ -105,3 +105,30 @@ describe('target pengalihan cocok dengan rute SPA', () => {
     }
   });
 });
+
+/**
+ * Cabang SUKSES (kode otorisasi sudah terbit) juga melayani dua pemanggil.
+ * Ia paling mudah terlewat: login PERTAMA selalu lewat layar persetujuan
+ * (XHR, JSON benar), dan cabang ini baru terpicu pada login BERIKUTNYA —
+ * saat consent sudah tersimpan dan alurnya tidak lagi menyentuh auth-ui.
+ */
+describe('cabang sukses authorize', () => {
+  const jawab = (navigasi: boolean, redirectUrl: string) =>
+    navigasi
+      ? { kind: 'redirect' as const, location: redirectUrl }
+      : { kind: 'json' as const, body: { redirect_url: redirectUrl } };
+
+  const CALLBACK = 'https://bifrost.menpan.go.id/api/admin/auth/sso/callback?code=abc&state=xyz';
+
+  it('navigasi browser menerima 302 ke callback, bukan JSON', () => {
+    const r = jawab(true, CALLBACK);
+    expect(r.kind).toBe('redirect');
+    expect(r.kind === 'redirect' && r.location).toBe(CALLBACK);
+  });
+
+  it('XHR auth-ui tetap menerima JSON redirect_url', () => {
+    const r = jawab(false, CALLBACK);
+    expect(r.kind).toBe('json');
+    expect(r.kind === 'json' && r.body.redirect_url).toBe(CALLBACK);
+  });
+});

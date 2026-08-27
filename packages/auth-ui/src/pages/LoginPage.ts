@@ -6,6 +6,7 @@
  */
 import { endpoints, apiRequest, setStoredToken, setStoredUser, type AuthResponse } from '../api';
 import { router, getAppContainer, getQueryParams } from '../router';
+import { isRegistrationEnabled } from '../runtime-config';
 import { MFA_TICKET_KEY, MFA_RETURN_URL_KEY } from './MFAVerifyPage';
 
 const FIELD =
@@ -97,7 +98,11 @@ export async function LoginPage(): Promise<void> {
             </button>
           </form>
 
-          <div style="text-align:center;margin-top:28px;font:500 13px 'Inter';color:#5E7896;">Belum punya akun? <a href="/register" style="color:#005598;font-weight:600;text-decoration:none;">Daftar</a></div>
+          ${
+            isRegistrationEnabled()
+              ? `<div style="text-align:center;margin-top:28px;font:500 13px 'Inter';color:#5E7896;">Belum punya akun? <a href="/register" style="color:#005598;font-weight:600;text-decoration:none;">Daftar</a></div>`
+              : ''
+          }
         </div>
       </div>
     </div>

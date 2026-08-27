@@ -5,6 +5,7 @@ export const API_BASE = (import.meta.env.VITE_API_URL as string) ?? '/api';
 
 // API endpoints
 export const endpoints = {
+  config: `${API_BASE}/auth/config`,
   login: `${API_BASE}/auth/login`,
   register: `${API_BASE}/auth/register`,
   forgotPassword: `${API_BASE}/auth/forgot-password`,
