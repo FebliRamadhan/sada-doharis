@@ -48,7 +48,9 @@ export function sendPaginated<T>(
   data: T[],
   page: number,
   limit: number,
-  total: number
+  total: number,
+  /** Whole-result-set counts, when the resource has an active/inactive split. */
+  counts?: { active: number; inactive: number }
 ): Response {
   const totalPages = Math.ceil(total / limit);
 
@@ -60,6 +62,7 @@ export function sendPaginated<T>(
       limit,
       total,
       totalPages,
+      ...(counts ? { activeCount: counts.active, inactiveCount: counts.inactive } : {}),
     },
   };
   return res.status(200).json(response);

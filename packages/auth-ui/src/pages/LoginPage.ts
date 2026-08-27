@@ -153,8 +153,20 @@ function initLoginForm(): void {
 }
 
 function checkUrlError(): void {
-  const error = getQueryParams().get('error');
-  if (error) showError(decodeURIComponent(error));
+  const params = getQueryParams();
+
+  const error = params.get('error');
+  if (error) {
+    showError(decodeURIComponent(error));
+    return;
+  }
+
+  // Ditandai oleh halaman yang memulangkan pengguna karena sesinya benar-benar
+  // habis. Tanpa ini mereka mendarat di layar login tanpa penjelasan dan
+  // mengira sistemnya yang bermasalah.
+  if (params.get('expired') === '1') {
+    showError('Sesi Anda telah berakhir. Silakan masuk kembali.');
+  }
 }
 
 function showError(message: string): void {

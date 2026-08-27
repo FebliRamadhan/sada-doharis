@@ -35,7 +35,10 @@ router.get('/', adminGuard, async (req: Request, res: Response, next: NextFuncti
     const limit = parseInt((req.query['limit'] as string) ?? '20', 10);
     const search = (req.query['search'] as string) ?? undefined;
     const { users, meta } = await userService.list({ page, limit, search });
-    sendPaginated(res, users, meta.page, meta.limit, meta.total);
+    sendPaginated(res, users, meta.page, meta.limit, meta.total, {
+      active: meta.activeCount,
+      inactive: meta.inactiveCount,
+    });
   } catch (error) {
     next(error);
   }

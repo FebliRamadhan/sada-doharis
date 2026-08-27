@@ -11,7 +11,14 @@ import { sessionService } from '../services/session.service.js';
 import { maybeRequireMfa } from '../services/login-issuer.service.js';
 import { prisma } from '../config/database.js';
 import { getRedis } from '../config/redis.js';
-import { sendSuccess, sendError, ValidationError, NotFoundError } from '@sada/shared';
+import {
+  sendSuccess,
+  sendError,
+  ValidationError,
+  NotFoundError,
+  UnauthorizedError,
+  ErrorCodes,
+} from '@sada/shared';
 import { auditService, AUDIT_ACTIONS } from '../services/audit.service.js';
 import { isAdminEmail } from '../middleware/adminGuard.js';
 import { csrfProtect } from '../middleware/csrf.js';
@@ -794,6 +801,57 @@ router.post('/logout', csrfProtect, async (req: Request, res: Response, next: Ne
     sendSuccess(res, { logged_out: true });
   } catch (error) {
     next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /auth/session/token:
+ *   post:
+ *     summary: Renew the access token from the SSO session
+ *     description: >
+ *       Mints a fresh access token for the user identified by the SSO session
+ *       cookie. Exists because the access token lives 15 minutes while the SSO
+ *       session lives days: without this, a still-authenticated user is thrown
+ *       back to the login screen every quarter of an hour.
+ *
+ *       Not a refresh-token grant — nothing long-lived is handed to the browser.
+ *       The httpOnly session cookie remains the only durable credential, and
+ *       the scopes issued are the same as a normal interactive login.
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: A new access token
+ *       401:
+ *         description: No active session, or the account is gone or disabled
+ */
+router.post('/session/token', csrfProtect, async (req: Request, res: Response) => {
+  // Deliberately does not use `next`: any failure here means "you are not
+  // authenticated", and leaking why (no cookie vs unknown user vs disabled
+  // account) tells an attacker which of those they hit.
+  try {
+    const userId = await sessionService.getUserId(req);
+    if (!userId) throw new UnauthorizedError('Session expired');
+
+    // The session may outlive the account: purged or deactivated users must not
+    // be able to keep minting tokens from a cookie issued before that happened.
+    const user = await userService.findById(userId);
+    if (!user.isActive) throw new UnauthorizedError('Session expired');
+
+    const scopes = ['profile', 'email'];
+    const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
+
+    // No OAuthToken row is written. The gateway verifies these tokens
+    // statelessly (RS256 + Redis blacklist), so a row would buy nothing while
+    // growing the table on every renewal.
+    sendSuccess(res, {
+      access_token: accessToken.token,
+      token_type: 'Bearer',
+      expires_in: Math.floor((accessToken.expiresAt.getTime() - Date.now()) / 1000),
+      user: { ...user, isAdmin: isAdminEmail(user.email) },
+    });
+  } catch {
+    sendError(res, ErrorCodes.UNAUTHORIZED, 'Session expired', 401);
   }
 });
 

@@ -6,6 +6,7 @@ export const API_BASE = (import.meta.env.VITE_API_URL as string) ?? '/api';
 // API endpoints
 export const endpoints = {
   config: `${API_BASE}/auth/config`,
+  sessionToken: `${API_BASE}/auth/session/token`,
   login: `${API_BASE}/auth/login`,
   register: `${API_BASE}/auth/register`,
   forgotPassword: `${API_BASE}/auth/forgot-password`,
@@ -78,6 +79,9 @@ export interface PaginatedResponse<T> {
     limit: number;
     total: number;
     totalPages: number;
+    /** Whole-result-set counts from the server — never derive these from the page. */
+    activeCount?: number;
+    inactiveCount?: number;
   };
 }
 
@@ -182,16 +186,60 @@ export function redirectWithState(url: string): void {
   window.location.href = newUrl.toString();
 }
 
-// API helper
-export async function apiRequest<T>(
-  url: string,
-  options: RequestInit = {}
-): Promise<{
+export interface ApiResult<T> {
   success: boolean;
   data?: T;
   meta?: PaginatedResponse<unknown>['meta'];
   error?: string;
-}> {
+  /**
+   * HTTP status, or 0 when the request never reached the server. Callers need
+   * this to tell "your session ended" (401) apart from "the network is down"
+   * (0) — those demand opposite reactions, and collapsing both into
+   * `success: false` is what let expired sessions sit silently on screen.
+   */
+  status: number;
+}
+
+/**
+ * Exchanges the SSO session cookie for a fresh access token.
+ *
+ * The access token lives 15 minutes; the SSO session lives days. Without this,
+ * every authenticated page breaks four times an hour while the user is still
+ * perfectly logged in.
+ *
+ * Returns false when the session itself is gone — that is the point where the
+ * caller should send the user to the login page.
+ */
+async function renewAccessToken(): Promise<boolean> {
+  try {
+    const response = await fetch(endpoints.sessionToken, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+    if (!response.ok) return false;
+
+    const json = (await response.json()) as {
+      data?: { access_token?: string; user?: User };
+    };
+    const token = json.data?.access_token;
+    if (!token) return false;
+
+    setStoredToken(token);
+    if (json.data?.user) setStoredUser(json.data.user);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// API helper
+export async function apiRequest<T>(
+  url: string,
+  options: RequestInit = {},
+  /** Internal: prevents a renewal loop. Not part of the public contract. */
+  isRetry = false
+): Promise<ApiResult<T>> {
   try {
     const token = getStoredToken();
     const headers: Record<string, string> = {
@@ -225,9 +273,23 @@ export async function apiRequest<T>(
       }
     }
 
+    // A 401 on a request we sent WITH a token means that token aged out. The
+    // SSO session usually has not, so renew once and replay the request before
+    // bothering the user. Guarded three ways against looping: only when a token
+    // was actually sent (so a wrong password on the login page stays a plain
+    // 401), never on the renewal endpoint itself, and never on a retry.
+    if (response.status === 401 && token && !isRetry && url !== endpoints.sessionToken) {
+      const renewed = await renewAccessToken();
+      if (renewed) {
+        return apiRequest<T>(url, options, true);
+      }
+      clearAuthStorage();
+    }
+
     if (!response.ok) {
       return {
         success: false,
+        status: response.status,
         error:
           json?.error?.message ||
           json?.message ||
@@ -236,15 +298,18 @@ export async function apiRequest<T>(
     }
 
     if (!json) {
-      return { success: false, error: 'Invalid server response' };
+      return { success: false, status: response.status, error: 'Invalid server response' };
     }
 
     // Backend wraps all responses: { success: true, data: <payload>, meta?: <pagination> }
     const data = json?.data !== undefined ? json.data : json;
-    return { success: true, data, meta: json?.meta };
+    return { success: true, status: response.status, data, meta: json?.meta };
   } catch (err) {
+    // status 0 = never reached the server. Distinct from any HTTP failure:
+    // callers must not treat a flaky network as a lost session.
     return {
       success: false,
+      status: 0,
       error: err instanceof Error ? err.message : 'Network error',
     };
   }

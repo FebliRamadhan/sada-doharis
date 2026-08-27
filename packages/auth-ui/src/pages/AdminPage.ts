@@ -12,8 +12,31 @@ import {
   type OAuthClient,
   type AuditLog,
   type User,
+  type PaginatedResponse,
 } from '../api';
 import { router } from '../router';
+
+// ─── Session guard ────────────────────────────────────────────────────────────
+
+/**
+ * Handles the one failure the admin console must never swallow: the session is
+ * over. `apiRequest` has already tried renewing from the SSO cookie by the time
+ * a 401 reaches us, so a 401 here means there is nothing left to renew.
+ *
+ * Every other failure is left alone — a 500 or a dropped connection must not
+ * log anyone out.
+ *
+ * Returns true when the caller should stop what it is doing immediately.
+ */
+function goneIfUnauthorized(status: number): boolean {
+  if (status !== 401) return false;
+
+  clearAuthStorage();
+  document.getElementById('admin-overlay')?.remove();
+  document.querySelector('.auth-container')?.classList.remove('admin-mode');
+  router.navigate('/login?expired=1');
+  return true;
+}
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -40,7 +63,7 @@ interface AdminState {
   view: 'clients' | 'logs' | 'mfa' | 'users';
   user: User | null;
   clients: OAuthClient[];
-  clientsMeta: { page: number; limit: number; total: number; totalPages: number };
+  clientsMeta: PaginatedResponse<unknown>['meta'];
   clientsLoading: boolean;
   logs: AuditLog[];
   logsMeta: { page: number; limit: number; total: number; totalPages: number };
@@ -52,7 +75,7 @@ interface AdminState {
   mfaMeta: { page: number; limit: number; total: number; totalPages: number };
   mfaLoading: boolean;
   users: AdminUser[];
-  usersMeta: { page: number; limit: number; total: number; totalPages: number };
+  usersMeta: PaginatedResponse<unknown>['meta'];
   usersLoading: boolean;
   usersSearch: string;
 }
@@ -87,6 +110,14 @@ export async function AdminPage(): Promise<void> {
   }
 
   const meResult = await apiRequest<User>(endpoints.me);
+
+  // A 401 here means neither the access token nor the SSO session survived —
+  // apiRequest already tried to renew. Falling back to the cached user would
+  // render the whole admin console for someone the server no longer knows.
+  if (goneIfUnauthorized(meResult.status)) return;
+
+  // The cached user is still the right answer when the server was simply
+  // unreachable (status 0): that is a network blip, not a lost session.
   const currentUser = meResult.success && meResult.data ? meResult.data : getStoredUser();
 
   if (!currentUser?.isAdmin) {
@@ -287,8 +318,11 @@ function renderMain(): void {
 // ─── Clients View ─────────────────────────────────────────────────────────────
 
 function renderClientsView(): string {
-  const active = state.clients.filter((c) => c.isActive).length;
-  const inactive = state.clientsMeta.total - active;
+  // Dari server, dihitung atas seluruh client. Sebelumnya `active` dihitung dari
+  // baris yang kebetulan sedang dipegang halaman ini lalu dikurangkan dari total
+  // global — campuran yang membuat angka "Nonaktif" tidak merujuk apa pun.
+  const active = state.clientsMeta.activeCount ?? 0;
+  const inactive = state.clientsMeta.inactiveCount ?? 0;
 
   const header = `
     <header style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:1.5rem;margin-bottom:2.5rem">
@@ -628,6 +662,7 @@ async function loadUsers(page: number): Promise<void> {
     `${endpoints.users}?page=${page}&limit=${state.usersMeta.limit}${q}`
   );
   state.usersLoading = false;
+  if (goneIfUnauthorized(r.status)) return;
   if (r.success && r.data) {
     state.users = r.data;
     if (r.meta) state.usersMeta = r.meta;
@@ -638,7 +673,11 @@ async function loadUsers(page: number): Promise<void> {
 }
 
 function renderUsersView(): string {
-  const activeOnPage = state.users.filter((u) => u.isActive).length;
+  const activeTotal = state.usersMeta.activeCount ?? 0;
+  const inactiveTotal = state.usersMeta.inactiveCount ?? 0;
+  // Saat pencarian aktif, hitungan server mengikuti filter yang sama — jadi
+  // keterangannya harus ikut berubah, bukan tetap mengaku "seluruh akun".
+  const cakupan = state.usersSearch ? 'Sesuai pencarian' : 'Seluruh akun terdaftar';
 
   const header = `
     <header style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:1.5rem;margin-bottom:2.5rem">
@@ -662,9 +701,9 @@ function renderUsersView(): string {
   return `${header}
 
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;margin-bottom:2.5rem">
-      ${statCard(String(state.usersMeta.total), 'Total Pengguna', 'Seluruh akun terdaftar', '#01347C')}
-      ${statCard(String(activeOnPage), 'Aktif', 'Di halaman ini', '#15803D')}
-      ${statCard(String(state.users.length - activeOnPage), 'Nonaktif', 'Di halaman ini', '#B45309')}
+      ${statCard(String(state.usersMeta.total), 'Total Pengguna', cakupan, '#01347C')}
+      ${statCard(String(activeTotal), 'Aktif', cakupan, '#15803D')}
+      ${statCard(String(inactiveTotal), 'Nonaktif', cakupan, '#B45309')}
     </div>
 
     <div style="${S.card};overflow:hidden">
@@ -745,6 +784,7 @@ function attachUsersEvents(): void {
       method: 'PATCH',
       body: JSON.stringify({ isActive }),
     });
+    if (goneIfUnauthorized(r.status)) return;
     if (!r.success) {
       showToast(r.error ?? 'Gagal mengubah status.', 'error');
       btn.disabled = false;
@@ -773,6 +813,7 @@ async function loadMfaUsers(page: number): Promise<void> {
     totalPages: number;
   }>(`${endpoints.adminMfaUsers}?page=${page}&limit=${state.mfaMeta.limit}`);
   state.mfaLoading = false;
+  if (goneIfUnauthorized(r.status)) return;
   if (r.success && r.data) {
     state.mfaUsers = r.data.users ?? [];
     state.mfaMeta = {
@@ -914,6 +955,7 @@ function openMfaResetConfirm(id: string, name: string): void {
     setSubmitLoading(true);
     const r = await apiRequest(endpoints.adminMfaDisable(id), { method: 'POST' });
     setSubmitLoading(false);
+    if (goneIfUnauthorized(r.status)) return;
     if (!r.success) {
       showToast(r.error ?? 'Gagal mereset MFA.', 'error');
       return;
@@ -998,6 +1040,7 @@ async function loadClients(page: number): Promise<void> {
     `${endpoints.clients}?page=${page}&limit=${state.clientsMeta.limit}`
   );
   state.clientsLoading = false;
+  if (goneIfUnauthorized(r.status)) return;
   if (r.success && r.data) {
     state.clients = r.data;
     if (r.meta) state.clientsMeta = r.meta;
@@ -1011,6 +1054,7 @@ async function loadLogs(page: number): Promise<void> {
     : `${endpoints.auditLogs}?page=${page}&limit=${state.logsMeta.limit}${state.logsActionFilter ? '&action=' + encodeURIComponent(state.logsActionFilter) : ''}`;
   const r = await apiRequest<AuditLog[]>(url);
   state.logsLoading = false;
+  if (goneIfUnauthorized(r.status)) return;
   if (r.success && r.data) {
     state.logs = r.data;
     if (r.meta) state.logsMeta = r.meta;
@@ -1142,6 +1186,7 @@ function openCreateModal(): void {
     });
     setSubmitLoading(false);
 
+    if (goneIfUnauthorized(r.status)) return;
     if (!r.success) {
       errMsg.textContent = r.error ?? 'Gagal membuat client.';
       errEl.style.display = 'block';
@@ -1227,6 +1272,7 @@ function openEditModal(c: OAuthClient): void {
     });
     setSubmitLoading(false);
 
+    if (goneIfUnauthorized(r.status)) return;
     if (!r.success) {
       errMsg.textContent = r.error ?? 'Gagal menyimpan.';
       errEl.style.display = 'block';
@@ -1269,6 +1315,7 @@ function openDeleteConfirm(id: string, name: string): void {
     setSubmitLoading(true);
     const r = await apiRequest(`${endpoints.clients}/${id}`, { method: 'DELETE' });
     setSubmitLoading(false);
+    if (goneIfUnauthorized(r.status)) return;
     if (!r.success) {
       showToast(r.error ?? 'Gagal menghapus.', 'error');
       return;
@@ -1310,6 +1357,7 @@ function openRegenConfirm(id: string, name: string): void {
       method: 'POST',
     });
     setSubmitLoading(false);
+    if (goneIfUnauthorized(r.status)) return;
     if (!r.success) {
       showToast(r.error ?? 'Gagal regenerasi.', 'error');
       return;

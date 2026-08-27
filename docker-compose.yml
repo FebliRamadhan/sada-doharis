@@ -102,6 +102,8 @@ services:
       - LDAP_SEARCH_BASE=${LDAP_SEARCH_BASE:-}
       - LDAP_SEARCH_FILTER=${LDAP_SEARCH_FILTER:-}
       - INTERNAL_EMAIL_DOMAIN=${INTERNAL_EMAIL_DOMAIN:-menpan.go.id}
+      # Pendaftaran mandiri (POST /auth/register) — default MATI, harus 'true' eksplisit
+      - REGISTRATION_ENABLED=${REGISTRATION_ENABLED:-false}
       # MFA (TOTP) — wajib & default aktif untuk user INTERNAL
       - MFA_REQUIRED_INTERNAL=${MFA_REQUIRED_INTERNAL:-true}
       - MFA_ISSUER=${MFA_ISSUER:-SADA SSO}
