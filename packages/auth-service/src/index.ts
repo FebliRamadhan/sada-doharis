@@ -33,6 +33,19 @@ validateEnv();
 
 const app = express();
 
+// TLS diterminasi di reverse proxy di depan service ini, sehingga tanpa baris
+// ini `req.protocol` selalu bernilai 'http' meski permintaannya datang lewat
+// HTTPS. Akibatnya bukan kosmetik: dokumen discovery OIDC menyusun seluruh
+// alamatnya dari `req.protocol`, sehingga ia mengiklankan
+// `http://.../oauth/token` — dan klien yang patuh akan mengirimkan
+// `client_secret` miliknya ke sana sebagai teks polos sebelum sempat
+// dialihkan ke HTTPS. Kebocorannya senyap: alurnya tetap berhasil.
+//
+// Nilai 1 berarti mempercayai TEPAT SATU proxy terdekat. Jangan diubah menjadi
+// `true`: itu mempercayai seluruh rantai X-Forwarded-For, sehingga klien mana
+// pun dapat memalsukan alamat asalnya.
+app.set('trust proxy', 1);
+
 const PORT = process.env['AUTH_SERVICE_PORT'] ?? 3001;
 
 // Security middlewares
