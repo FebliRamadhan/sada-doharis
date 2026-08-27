@@ -72,12 +72,24 @@ interface AdminState {
   logsClientName: string;
   logsActionFilter: string;
   mfaUsers: MfaUser[];
-  mfaMeta: { page: number; limit: number; total: number; totalPages: number };
+  mfaMeta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    enabledCount?: number;
+    pendingCount?: number;
+  };
   mfaLoading: boolean;
   users: AdminUser[];
   usersMeta: PaginatedResponse<unknown>['meta'];
   usersLoading: boolean;
   usersSearch: string;
+  usersStatus: 'all' | 'active' | 'inactive';
+  usersType: 'all' | 'INTERNAL' | 'GOVERNMENT' | 'EXTERNAL';
+  usersMfa: 'all' | 'enabled' | 'pending';
+  mfaSearch: string;
+  mfaFilter: 'all' | 'enabled' | 'pending';
 }
 
 const state: AdminState = {
@@ -99,6 +111,11 @@ const state: AdminState = {
   usersMeta: { page: 1, limit: 20, total: 0, totalPages: 1 },
   usersLoading: false,
   usersSearch: '',
+  usersStatus: 'all',
+  usersType: 'all',
+  usersMfa: 'all',
+  mfaSearch: '',
+  mfaFilter: 'all',
 };
 
 // ─── Entry Point ──────────────────────────────────────────────────────────────
@@ -376,6 +393,23 @@ function renderClientsView(): string {
       </div>
       ${renderPagination(state.clientsMeta, 'clients')}
     </div>`;
+}
+
+/** Dropdown filter. Nilainya dikirim ke server, tidak pernah menyaring di browser. */
+function filterSelect(
+  id: string,
+  label: string,
+  current: string,
+  options: Array<[string, string]>
+): string {
+  return `<select id="${id}" aria-label="${label}" style="${S.input};width:auto;min-width:9.5rem;cursor:pointer">
+    ${options
+      .map(
+        ([value, text]) =>
+          `<option value="${value}"${value === current ? ' selected' : ''}>${text}</option>`
+      )
+      .join('')}
+  </select>`;
 }
 
 function statCard(value: string, title: string, desc: string, color: string): string {
@@ -657,10 +691,17 @@ function attachLogsEvents(): void {
 async function loadUsers(page: number): Promise<void> {
   state.usersLoading = true;
   renderMain();
-  const q = state.usersSearch ? `&search=${encodeURIComponent(state.usersSearch)}` : '';
-  const r = await apiRequest<AdminUser[]>(
-    `${endpoints.users}?page=${page}&limit=${state.usersMeta.limit}${q}`
-  );
+  // Seluruh penyaringan dikirim ke server. Menyaring di browser hanya akan
+  // menyaring 20 baris yang kebetulan sedang dipegang halaman ini.
+  const q = new URLSearchParams({
+    page: String(page),
+    limit: String(state.usersMeta.limit),
+  });
+  if (state.usersSearch) q.set('search', state.usersSearch);
+  if (state.usersStatus !== 'all') q.set('status', state.usersStatus);
+  if (state.usersType !== 'all') q.set('type', state.usersType);
+  if (state.usersMfa !== 'all') q.set('mfa', state.usersMfa);
+  const r = await apiRequest<AdminUser[]>(`${endpoints.users}?${q.toString()}`);
   state.usersLoading = false;
   if (goneIfUnauthorized(r.status)) return;
   if (r.success && r.data) {
@@ -675,9 +716,15 @@ async function loadUsers(page: number): Promise<void> {
 function renderUsersView(): string {
   const activeTotal = state.usersMeta.activeCount ?? 0;
   const inactiveTotal = state.usersMeta.inactiveCount ?? 0;
-  // Saat pencarian aktif, hitungan server mengikuti filter yang sama — jadi
-  // keterangannya harus ikut berubah, bukan tetap mengaku "seluruh akun".
-  const cakupan = state.usersSearch ? 'Sesuai pencarian' : 'Seluruh akun terdaftar';
+  // Hitungan server mengikuti filter yang sama dengan daftarnya, jadi
+  // keterangannya harus ikut berubah begitu ada filter apa pun yang menyala —
+  // kalau tidak, angkanya akan mengaku mewakili seluruh akun.
+  const menyaring =
+    state.usersSearch !== '' ||
+    state.usersStatus !== 'all' ||
+    state.usersType !== 'all' ||
+    state.usersMfa !== 'all';
+  const cakupan = menyaring ? 'Sesuai filter' : 'Seluruh akun terdaftar';
 
   const header = `
     <header style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:1.5rem;margin-bottom:2.5rem">
@@ -692,6 +739,22 @@ function renderUsersView(): string {
       <div style="display:flex;gap:0.5rem;align-items:center">
         <input id="users-search" type="text" placeholder="Cari nama / email..." value="${escHtml(state.usersSearch)}"
           style="${S.input};width:16rem" aria-label="Cari pengguna">
+        ${filterSelect('users-status', 'Filter status akun', state.usersStatus, [
+          ['all', 'Semua status'],
+          ['active', 'Aktif'],
+          ['inactive', 'Nonaktif'],
+        ])}
+        ${filterSelect('users-type', 'Filter tipe pengguna', state.usersType, [
+          ['all', 'Semua tipe'],
+          ['INTERNAL', 'Internal'],
+          ['GOVERNMENT', 'Pemerintah'],
+          ['EXTERNAL', 'Eksternal'],
+        ])}
+        ${filterSelect('users-mfa', 'Filter status MFA', state.usersMfa, [
+          ['all', 'Semua MFA'],
+          ['enabled', 'MFA aktif'],
+          ['pending', 'Belum enroll'],
+        ])}
         <button id="users-search-btn" style="padding:0.625rem 1rem;border-radius:0.75rem;font-size:0.875rem;font-weight:600;color:#fff;border:none;cursor:pointer;background:linear-gradient(135deg,#01347C,#005598)">Cari</button>
       </div>
     </header>`;
@@ -774,6 +837,19 @@ function attachUsersEvents(): void {
     if ((e as KeyboardEvent).key === 'Enter') void doSearch();
   });
 
+  // Setiap perubahan filter kembali ke halaman 1: bertahan di halaman 7 dari
+  // hasil lama akan menampilkan tabel kosong tanpa sebab yang terlihat.
+  const onFilter = (id: string, apply: (v: string) => void) => {
+    document.getElementById(id)?.addEventListener('change', async (e) => {
+      apply((e.target as HTMLSelectElement).value);
+      await loadUsers(1);
+      renderMain();
+    });
+  };
+  onFilter('users-status', (v) => (state.usersStatus = v as typeof state.usersStatus));
+  onFilter('users-type', (v) => (state.usersType = v as typeof state.usersType));
+  onFilter('users-mfa', (v) => (state.usersMfa = v as typeof state.usersMfa));
+
   document.getElementById('users-table')?.addEventListener('click', async (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-action="toggle-user"]');
     if (!btn) return;
@@ -811,7 +887,16 @@ async function loadMfaUsers(page: number): Promise<void> {
     limit: number;
     total: number;
     totalPages: number;
-  }>(`${endpoints.adminMfaUsers}?page=${page}&limit=${state.mfaMeta.limit}`);
+    enabledCount?: number;
+    pendingCount?: number;
+  }>(
+    (() => {
+      const p = new URLSearchParams({ page: String(page), limit: String(state.mfaMeta.limit) });
+      if (state.mfaSearch) p.set('search', state.mfaSearch);
+      if (state.mfaFilter !== 'all') p.set('mfa', state.mfaFilter);
+      return `${endpoints.adminMfaUsers}?${p.toString()}`;
+    })()
+  );
   state.mfaLoading = false;
   if (goneIfUnauthorized(r.status)) return;
   if (r.success && r.data) {
@@ -821,13 +906,19 @@ async function loadMfaUsers(page: number): Promise<void> {
       limit: r.data.limit,
       total: r.data.total,
       totalPages: r.data.totalPages,
+      enabledCount: r.data.enabledCount ?? 0,
+      pendingCount: r.data.pendingCount ?? 0,
     };
   }
 }
 
 function renderMfaView(): string {
-  const enabledOnPage = state.mfaUsers.filter((u) => u.mfaEnabled).length;
-  const pendingOnPage = state.mfaUsers.length - enabledOnPage;
+  // Dari server, atas seluruh pengguna internal yang cocok dengan filter —
+  // bukan dari baris yang kebetulan masuk halaman ini.
+  const enabledTotal = state.mfaMeta.enabledCount ?? 0;
+  const pendingTotal = state.mfaMeta.pendingCount ?? 0;
+  const menyaring = state.mfaSearch !== '' || state.mfaFilter !== 'all';
+  const cakupanMfa = menyaring ? 'Sesuai filter' : 'Seluruh pengguna internal';
 
   const header = `
     <header style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:1.5rem;margin-bottom:2.5rem">
@@ -839,6 +930,16 @@ function renderMfaView(): string {
           MFA wajib untuk semua pengguna internal. Reset bila pengguna kehilangan perangkat — mereka akan dipaksa enroll ulang saat login berikutnya.
         </p>
       </div>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <input id="mfa-search" type="text" placeholder="Cari nama / email..." value="${escHtml(state.mfaSearch)}"
+          style="${S.input};width:16rem" aria-label="Cari pengguna internal">
+        ${filterSelect('mfa-filter', 'Filter status MFA', state.mfaFilter, [
+          ['all', 'Semua status'],
+          ['enabled', 'MFA aktif'],
+          ['pending', 'Belum enroll'],
+        ])}
+        <button id="mfa-search-btn" style="padding:0.625rem 1rem;border-radius:0.75rem;font-size:0.875rem;font-weight:600;color:#fff;border:none;cursor:pointer;background:linear-gradient(135deg,#01347C,#005598)">Cari</button>
+      </div>
     </header>`;
 
   if (state.mfaLoading) return header + loadingHTML();
@@ -846,9 +947,9 @@ function renderMfaView(): string {
   return `${header}
 
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;margin-bottom:2.5rem">
-      ${statCard(String(state.mfaMeta.total), 'Total Internal', 'Pengguna LDAP terdaftar', '#01347C')}
-      ${statCard(String(enabledOnPage), 'MFA Aktif', 'Di halaman ini', '#15803D')}
-      ${statCardFeatured(String(pendingOnPage), 'Belum Enroll', 'Di halaman ini')}
+      ${statCard(String(state.mfaMeta.total), 'Total Internal', cakupanMfa, '#01347C')}
+      ${statCard(String(enabledTotal), 'MFA Aktif', cakupanMfa, '#15803D')}
+      ${statCardFeatured(String(pendingTotal), 'Belum Enroll', cakupanMfa)}
     </div>
 
     <div style="${S.card};overflow:hidden">
@@ -866,7 +967,11 @@ function renderMfaView(): string {
           <tbody>
             ${
               state.mfaUsers.length === 0
-                ? `<tr><td colspan="5">${emptyState('Belum ada pengguna internal.')}</td></tr>`
+                ? `<tr><td colspan="5">${emptyState(
+                    menyaring
+                      ? 'Tidak ada pengguna yang cocok dengan filter ini.'
+                      : 'Belum ada pengguna internal.'
+                  )}</td></tr>`
                 : state.mfaUsers.map(renderMfaRow).join('')
             }
           </tbody>
@@ -919,6 +1024,22 @@ function renderMfaRow(u: MfaUser): string {
 }
 
 function attachMfaEvents(): void {
+  const doSearch = async () => {
+    const input = document.getElementById('mfa-search') as HTMLInputElement | null;
+    state.mfaSearch = input?.value.trim() ?? '';
+    await loadMfaUsers(1);
+    renderMain();
+  };
+  document.getElementById('mfa-search-btn')?.addEventListener('click', doSearch);
+  document.getElementById('mfa-search')?.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') void doSearch();
+  });
+  document.getElementById('mfa-filter')?.addEventListener('change', async (e) => {
+    state.mfaFilter = (e.target as HTMLSelectElement).value as typeof state.mfaFilter;
+    await loadMfaUsers(1);
+    renderMain();
+  });
+
   document.getElementById('mfa-table')?.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-action="reset-mfa"]');
     if (!btn) return;

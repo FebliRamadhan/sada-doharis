@@ -181,6 +181,35 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 // ==============================================
+// Jaring pengaman
+// ==============================================
+// Sejak Node 15, unhandled rejection mematikan proses. Untuk server otentikasi
+// yang dipakai seluruh instansi, itu berarti satu permintaan cacat pada satu
+// rute bisa memadamkan login semua orang — persis yang terjadi lewat adminGuard
+// pada 2026-08-27 (7 restart dalam sehari).
+//
+// Sebuah promise yang gagal ditangani adalah bug yang harus diperbaiki, tapi
+// tempat memperbaikinya adalah kode rutenya, bukan dengan menjatuhkan layanan.
+// Dicatat dengan keras supaya tidak diam-diam menumpuk.
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection — service dipertahankan hidup', {
+    reason: reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+});
+
+// Exception yang tak tertangkap meninggalkan proses dalam keadaan tak menentu,
+// jadi di sini kita tetap keluar — tapi setelah alasannya tercatat. Sebelumnya
+// prosesnya mati tanpa jejak apa pun di log.
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception — proses dihentikan', {
+    error: error.message,
+    stack: error.stack,
+  });
+  setTimeout(() => process.exit(1), 100);
+});
+
+// ==============================================
 // Start server
 // ==============================================
 async function start(): Promise<void> {

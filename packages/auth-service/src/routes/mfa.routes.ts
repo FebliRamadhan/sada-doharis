@@ -304,8 +304,27 @@ router.get(
         Math.max(1, parseInt((req.query['limit'] as string) ?? '20', 10) || 20)
       );
 
-      const where = { userType: 'INTERNAL' as const };
-      const [users, total] = await Promise.all([
+      const search = (req.query['search'] as string | undefined)?.trim();
+      const mfaFilter = (req.query['mfa'] as string | undefined) ?? 'all';
+      if (!['all', 'enabled', 'pending'].includes(mfaFilter)) {
+        throw new ValidationError('Invalid filter', { mfa: ['all | enabled | pending'] });
+      }
+
+      // MFA hanya berlaku bagi INTERNAL, jadi syarat itu tidak pernah bisa
+      // ditawar oleh filter apa pun dari klien.
+      const where: Record<string, unknown> = { userType: 'INTERNAL' as const };
+      if (search) {
+        where['OR'] = [
+          { email: { contains: search, mode: 'insensitive' as const } },
+          { name: { contains: search, mode: 'insensitive' as const } },
+        ];
+      }
+      if (mfaFilter !== 'all') where['mfaEnabled'] = mfaFilter === 'enabled';
+
+      // enabledCount dihitung di database atas `where` yang sama — bukan dari
+      // baris yang kebetulan masuk halaman ini. Dengan 354 pengguna internal,
+      // menghitung dari halaman berarti melaporkan paling banyak `limit`.
+      const [users, total, enabledCount] = await Promise.all([
         prisma.user.findMany({
           where,
           select: { id: true, email: true, name: true, mfaEnabled: true, mfaEnabledAt: true },
@@ -314,9 +333,18 @@ router.get(
           take: limit,
         }),
         prisma.user.count({ where }),
+        prisma.user.count({ where: { ...where, mfaEnabled: true } }),
       ]);
 
-      sendSuccess(res, { users, page, limit, total, totalPages: Math.ceil(total / limit) });
+      sendSuccess(res, {
+        users,
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        enabledCount,
+        pendingCount: total - enabledCount,
+      });
     } catch (error) {
       next(error);
     }
