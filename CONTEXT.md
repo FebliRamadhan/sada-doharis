@@ -16,6 +16,8 @@ Glossary of the ubiquitous language for the PANRB SSO / OAuth2 authorization ser
 
 **Scope `pegawai`** — OAuth2 scope granting clients access to employee claims (pegawai_id, nip, fullname, jabatan, unit_kerja) in the UserInfo response. Only yields claims for INTERNAL users; for other user types the scope is inert.
 
-**User types** — INTERNAL (PANRB employees, authenticate via LDAP), GOVERNMENT (ASN from other agencies, via SPLP SSO), EXTERNAL (the public, via Google/Facebook).
+**User types** — INTERNAL (PANRB employees, authenticate via LDAP), GOVERNMENT (ASN from other agencies, via SPLP SSO), EXTERNAL (everyone who is neither of those). EXTERNAL is also the type a User falls back to when nothing else is asserted, so a User being EXTERNAL is *not* evidence of who they are — an employee who first arrived by some route other than LDAP stays EXTERNAL even after authenticating as an employee. Read it as "unclassified", not as "member of the public".
 
-**MFA** — Optional TOTP-based second factor for user login, with single-use backup codes. A property of the User (auth identity), not the Pegawai (HR record).
+**Pendaftaran Mandiri** — Self-registration: someone creating a User for themselves with an email and a password of their choosing, with no directory backing it, no email verification, and no approval. It is not a sanctioned way into SADA SSO; the sanctioned routes are LDAP for INTERNAL and SPLP for GOVERNMENT. Distinct from social login, which is also self-initiated but at least binds the User to an identity a provider vouches for.
+
+**MFA** — TOTP-based second factor for user login, with single-use backup codes. A property of the User (auth identity), not the Pegawai (HR record). Its reach is defined by user type, not by choice: INTERNAL users are required to enrol, and everyone else is outside its scope entirely — there is no way for a non-INTERNAL User to hold a second factor. A User whose type is wrong is therefore also outside MFA, whatever their real employment.

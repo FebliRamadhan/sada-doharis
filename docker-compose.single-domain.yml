@@ -94,6 +94,9 @@ services:
       - MFA_REQUIRED_INTERNAL=${MFA_REQUIRED_INTERNAL:-true}
       - MFA_PENDING_TTL=${MFA_PENDING_TTL:-300}
 
+      # Pendaftaran mandiri (POST /auth/register) — default MATI, harus 'true' eksplisit
+      - REGISTRATION_ENABLED=${REGISTRATION_ENABLED:-false}
+
       # OAuth2 timeouts
       - OAUTH_AUTHORIZATION_CODE_EXPIRES_IN=${OAUTH_AUTHORIZATION_CODE_EXPIRES_IN:-600}
       - OAUTH_ACCESS_TOKEN_EXPIRES_IN=${OAUTH_ACCESS_TOKEN_EXPIRES_IN:-3600}
