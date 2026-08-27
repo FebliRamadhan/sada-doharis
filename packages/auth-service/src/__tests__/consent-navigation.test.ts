@@ -78,3 +78,30 @@ describe('pengalihan ke layar persetujuan mempertahankan query', () => {
     expect(alihkan(asal)).toContain('redirect_uri=https%3A%2F%2Fb.go.id%2Fcb');
   });
 });
+
+/**
+ * Router SPA auth-ui mencocokkan `window.location.pathname` SECARA PERSIS
+ * ('/login', '/authorize'), dan nginx-nya menyajikan index.html untuk path apa
+ * pun tanpa menulis ulang. Karena itu awalan '/auth' membuat URL bertahan di
+ * address bar, tidak cocok rute mana pun, lalu notFound() melempar pengguna ke
+ * beranda — gejalanya: "dialihkan ke SSO, bukan kembali ke aplikasi".
+ */
+describe('target pengalihan cocok dengan rute SPA', () => {
+  const RUTE_SPA = ['/', '/login', '/register', '/forgot-password', '/portal', '/authorize'];
+
+  it('tujuan login adalah rute yang benar-benar ada', () => {
+    expect(RUTE_SPA).toContain('/login');
+    expect(RUTE_SPA).not.toContain('/auth/login');
+  });
+
+  it('tujuan persetujuan adalah rute yang benar-benar ada', () => {
+    expect(RUTE_SPA).toContain('/authorize');
+    expect(RUTE_SPA).not.toContain('/auth/authorize');
+  });
+
+  it('tidak ada target pengalihan yang berawalan /auth', () => {
+    for (const target of ['/login', '/authorize']) {
+      expect(target.startsWith('/auth/')).toBe(false);
+    }
+  });
+});
