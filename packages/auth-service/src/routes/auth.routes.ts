@@ -605,7 +605,7 @@ router.get(
  */
 router.get(
   '/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/auth/login' }),
+  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = req.user as { id: string };
@@ -671,7 +671,7 @@ router.get(
  */
 router.get(
   '/facebook/callback',
-  passport.authenticate('facebook', { session: false, failureRedirect: '/auth/login' }),
+  passport.authenticate('facebook', { session: false, failureRedirect: '/login' }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = req.user as { id: string };
