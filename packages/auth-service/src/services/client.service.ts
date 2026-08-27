@@ -80,13 +80,15 @@ export const clientService = {
   async list(page: number = 1, limit: number = 10) {
     const skip = (page - 1) * limit;
 
-    const [clients, total] = await Promise.all([
+    const [clients, total, activeCount] = await Promise.all([
       prisma.oAuthClient.findMany({
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
       prisma.oAuthClient.count(),
+      // Counted across every client, not just the page being displayed.
+      prisma.oAuthClient.count({ where: { isActive: true } }),
     ]);
 
     return {
@@ -96,6 +98,8 @@ export const clientService = {
         limit,
         total,
         totalPages: Math.ceil(total / limit),
+        activeCount,
+        inactiveCount: total - activeCount,
       },
     };
   },

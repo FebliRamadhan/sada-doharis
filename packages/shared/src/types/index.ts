@@ -125,6 +125,13 @@ export interface ApiMeta {
   limit?: number;
   total?: number;
   totalPages?: number;
+  /**
+   * Counts across the WHOLE filtered result set, not the current page.
+   * A dashboard tile that sums the rows it happens to be holding reports the
+   * page, not the system — so the aggregate has to come from the database.
+   */
+  activeCount?: number;
+  inactiveCount?: number;
 }
 
 // ============================================

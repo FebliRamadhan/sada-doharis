@@ -161,7 +161,10 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const limit = Math.min(parseInt(req.query['limit'] as string) || 10, 100);
 
     const result = await clientService.list(page, limit);
-    sendPaginated(res, result.data, result.meta.page, result.meta.limit, result.meta.total);
+    sendPaginated(res, result.data, result.meta.page, result.meta.limit, result.meta.total, {
+      active: result.meta.activeCount,
+      inactive: result.meta.inactiveCount,
+    });
   } catch (error) {
     next(error);
   }

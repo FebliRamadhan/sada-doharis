@@ -392,7 +392,7 @@ export const userService = {
         }
       : {};
 
-    const [users, total] = await Promise.all([
+    const [users, total, activeCount] = await Promise.all([
       prisma.user.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -410,9 +410,22 @@ export const userService = {
         },
       }),
       prisma.user.count({ where }),
+      // Counted in the database, under the SAME `where` as the listing, so the
+      // tiles describe the whole filtered set rather than the rows on screen.
+      prisma.user.count({ where: { ...where, isActive: true } }),
     ]);
 
-    return { users, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    return {
+      users,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        activeCount,
+        inactiveCount: total - activeCount,
+      },
+    };
   },
 
   /** Admin: activate/deactivate any user account. */
