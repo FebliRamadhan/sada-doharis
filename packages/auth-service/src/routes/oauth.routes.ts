@@ -197,7 +197,12 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
     if (!userId) {
       // Browser navigation without token — redirect to UI login
       const returnUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-      return res.redirect(`/auth/login?return_url=${encodeURIComponent(returnUrl)}`);
+      // Tanpa awalan /auth: router SPA mencocokkan window.location.pathname
+      // SECARA PERSIS dengan rutenya ('/login', '/authorize'). Nginx auth-ui
+      // menyajikan index.html untuk path apa pun tanpa menulis ulang, jadi
+      // '/auth/login' tetap tertulis di address bar, tidak cocok rute mana pun,
+      // dan notFound() melempar pengguna ke beranda — bukan ke halaman login.
+      return res.redirect(`/login?return_url=${encodeURIComponent(returnUrl)}`);
     }
 
     const requestedScopes = scope?.split(' ') ?? [];
@@ -236,7 +241,7 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
       // bukan dari sebuah `return_url`.
       if (isBrowserNavigation(req)) {
         const query = req.originalUrl.slice(req.originalUrl.indexOf('?') + 1);
-        return res.redirect(`/auth/authorize?${query}`);
+        return res.redirect(`/authorize?${query}`);
       }
       return sendSuccess(res, { needs_consent: true });
     }
