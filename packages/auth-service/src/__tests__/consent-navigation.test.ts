@@ -28,9 +28,9 @@ describe('membedakan navigasi browser dari XHR auth-ui', () => {
   });
 
   it('Accept: text/html dikenali sebagai navigasi (klien lama tanpa Sec-Fetch)', () => {
-    expect(
-      isBrowserNavigation(req({ accept: 'text/html,application/xhtml+xml,*/*;q=0.8' })),
-    ).toBe(true);
+    expect(isBrowserNavigation(req({ accept: 'text/html,application/xhtml+xml,*/*;q=0.8' }))).toBe(
+      true
+    );
   });
 
   it('fetch() dari auth-ui TIDAK dianggap navigasi', () => {
