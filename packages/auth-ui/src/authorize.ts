@@ -36,6 +36,12 @@ interface OAuthParams {
   responseType: string;
   codeChallenge?: string;
   codeChallengeMethod?: string;
+  /**
+   * Wajib ikut. Klien OIDC mencocokkan nonce pada id_token dengan yang ia
+   * kirim; bila hilang di perjalanan lewat layar persetujuan, id_token lahir
+   * tanpa nonce dan klien menolaknya — tepat setelah pengguna menyetujui.
+   */
+  nonce?: string;
 }
 
 function getOAuthParams(): OAuthParams | null {
@@ -55,6 +61,7 @@ function getOAuthParams(): OAuthParams | null {
     responseType: params.get('response_type') || 'code',
     codeChallenge: params.get('code_challenge') || undefined,
     codeChallengeMethod: params.get('code_challenge_method') || undefined,
+    nonce: params.get('nonce') || undefined,
   };
 }
 
@@ -144,6 +151,7 @@ function buildAuthorizeUrl(oauthParams: OAuthParams, withConsent = false): strin
   if (oauthParams.codeChallenge) url.searchParams.set('code_challenge', oauthParams.codeChallenge);
   if (oauthParams.codeChallengeMethod)
     url.searchParams.set('code_challenge_method', oauthParams.codeChallengeMethod);
+  if (oauthParams.nonce) url.searchParams.set('nonce', oauthParams.nonce);
   if (withConsent) url.searchParams.set('consent', 'approved');
   return url.pathname + url.search;
 }

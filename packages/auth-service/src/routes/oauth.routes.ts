@@ -10,6 +10,19 @@ import { sendSuccess, sendError, ValidationError, ErrorCodes } from '@sada/share
 import { csrfProtect } from '../middleware/csrf.js';
 import { parseAllowedOrigins, isOriginAllowed } from '../utils/origin.js';
 
+/**
+ * Membedakan navigasi browser dari XHR auth-ui.
+ *
+ * `Sec-Fetch-Mode: navigate` hanya dikirim browser untuk navigasi tingkat atas
+ * dan tidak pernah untuk `fetch()`. `Accept: text/html` dipakai sebagai jaring
+ * kedua untuk klien lama. auth-ui memanggil lewat `fetch()` tanpa menyetel
+ * Accept, sehingga tidak pernah keliru dianggap navigasi.
+ */
+function isBrowserNavigation(req: Request): boolean {
+  if (req.headers['sec-fetch-mode'] === 'navigate') return true;
+  return (req.headers['accept'] ?? '').includes('text/html');
+}
+
 // Consent TTL matches the refresh token session lifetime
 const CONSENT_TTL_SECONDS = (() => {
   const raw = process.env['JWT_REFRESH_TOKEN_EXPIRES_IN'] ?? '7d';
@@ -207,7 +220,24 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
       const merged = [...new Set([...storedScopes, ...requestedScopes])];
       await redis.setex(consentKey, CONSENT_TTL_SECONDS, JSON.stringify(merged));
     } else if (!consentCoversScopes) {
-      // No stored consent — tell frontend to show consent screen
+      // Endpoint ini melayani DUA jenis pemanggil, dan keduanya harus dijawab
+      // dengan bentuk yang mereka mengerti:
+      //
+      //  - XHR dari auth-ui  → JSON, agar ia menampilkan layar persetujuan
+      //  - navigasi browser  → pengalihan ke layar itu
+      //
+      // Tanpa pembedaan ini, pengguna yang SUDAH punya sesi SADA lalu datang
+      // dari aplikasi lain akan mendarat pada JSON mentah `needs_consent: true`
+      // di address bar-nya — alurnya berhenti tepat sebelum layar persetujuan
+      // yang seharusnya muncul. Cabang "belum login" di atas sudah membedakan
+      // keduanya; cabang ini terlewat.
+      // Query string diteruskan APA ADANYA: halaman persetujuan membaca
+      // client_id, scope, state, nonce, dan PKCE langsung dari URL-nya —
+      // bukan dari sebuah `return_url`.
+      if (isBrowserNavigation(req)) {
+        const query = req.originalUrl.slice(req.originalUrl.indexOf('?') + 1);
+        return res.redirect(`/auth/authorize?${query}`);
+      }
       return sendSuccess(res, { needs_consent: true });
     }
 
