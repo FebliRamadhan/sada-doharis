@@ -97,11 +97,19 @@ jobs:
           docker compose -f docker-compose.prod.yml pull gateway auth-service auth-ui
           # Token job mati setelah job selesai; jangan tinggalkan login basi di server.
           docker logout ghcr.io
-          docker compose -f docker-compose.prod.yml run --rm auth-service \
+          # -T dan </dev/null: skrip ini sendiri datang lewat stdin ke `bash -s`.
+          # Tanpa keduanya `compose run` menelan sisa skrip (up -d tak pernah jalan).
+          docker compose -f docker-compose.prod.yml run --rm -T auth-service \
             pnpm --filter @sada/auth-service exec prisma migrate deploy \
-            --schema=../../prisma/schema.prisma
-          docker compose -f docker-compose.prod.yml up -d --remove-orphans --no-build
+            --schema=../../prisma/schema.prisma </dev/null
+          docker compose -f docker-compose.prod.yml up -d --remove-orphans --no-build </dev/null
           docker image prune -f
+          # Gagal keras bila ada container aplikasi yang tidak memakai tag baru.
+          for svc in gateway auth-service auth-ui; do
+            img="$(docker inspect -f '{{.Config.Image}}' "sada-$svc-prod")"
+            echo "$svc -> $img"
+            case "$img" in *":$VERSION") ;; *) echo "::error::$svc masih $img"; exit 1 ;; esac
+          done
           SCRIPT
           } | ssh -i "$RUNNER_TEMP/ssh/key" -p "$PORT" -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
                 "$USER@$HOST" 'bash -s'
