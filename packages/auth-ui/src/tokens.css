@@ -1,0 +1,78 @@
+/*
+ * SADA SSO — tokens.
+ * Satu-satunya tempat warna dan font didefinisikan. Halaman (termasuk style
+ * inline di src/pages/*.ts) hanya boleh memakai var(--…), tidak menulis literal.
+ * Netral diturunkan dari navy PANRB, bukan dari palet slate Tailwind.
+ */
+:root {
+  /* Brand PANRB (menpan.go.id, logo) */
+  --panrb-navy: #01347c;
+  --panrb-navy-deep: #00235a;
+  --panrb-blue: #005598;
+  --panrb-blue-hover: #014b86;
+  --panrb-blue-light: #2894d9;
+  --panrb-red: #c1272d;
+  --panrb-gold: #f5c218;
+
+  --c-white: #ffffff;
+  --c-black: #000814;
+
+  /* Permukaan */
+  --color-page: #fbfdff;
+  --color-background: #eef4fb;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f5f8fc;
+  --color-surface-sunk: #e9eff6;
+
+  /* Tinta (semua ≥ 4.5:1 di atas --color-background kecuali placeholder ≥ 4.5:1 di atas putih) */
+  --color-text: #0d1b2a;
+  --color-text-secondary: #354e6b;
+  --color-text-muted: #536c8a;
+  --color-placeholder: #5a7391;
+
+  /* Garis. --color-field-edge ≥ 3:1 terhadap semua permukaan (gate 40). */
+  --color-border: #c8d8ea;
+  --color-border-subtle: #e5eef7;
+  --color-field-edge: #7089a5;
+  --color-focus: #005598;
+
+  /* Status */
+  --color-success: #15803d;
+  --color-error: #c0392b;
+  --color-error-ink: #9b2517;
+  --color-warning: #b45309;
+  --color-warning-ink: #7a4b00;
+  --color-warning-bg: #fff7e0;
+  --color-success-bg: #e8f5ec;
+
+  /* Tipe pengguna (badge admin) */
+  --color-type-gov: #0f766e;
+  --color-type-external: #7c3aed;
+
+  /* Tipografi */
+  --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Nama peran Hallmark, dipetakan ke brand */
+  --color-paper: var(--color-page);
+  --color-paper-2: var(--color-surface-muted);
+  --color-paper-3: var(--color-surface-sunk);
+  --color-ink: var(--color-text);
+  --color-ink-2: var(--color-text-secondary);
+  --color-muted: var(--color-field-edge);
+  --color-rule: var(--color-border);
+  --color-accent: var(--panrb-blue);
+  --color-accent-ink: var(--c-white);
+
+  /* Skala bersama (Hallmark scaffold, app scope) */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --z-raised: 10;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal: 400;
+  --z-toast: 500;
+  --tracking-display: -0.02em;
+}

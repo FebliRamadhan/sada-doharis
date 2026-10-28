@@ -37,6 +37,10 @@ model User {
   mfaBackupCodes String[]  @default([]) // bcrypt hash, sekali pakai
   mfaEnabledAt   DateTime?
 
+  // Masa Berlaku Password LDAP — hanya untuk user INTERNAL
+  passwordChangedAt  DateTime? // perubahan terakhir yang diketahui (Zimbra atau lewat SADA)
+  passwordMustChange Boolean   @default(false) // "Wajibkan Ganti Password" oleh admin
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

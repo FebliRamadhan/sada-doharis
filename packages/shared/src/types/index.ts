@@ -176,6 +176,8 @@ export interface LdapUser {
   mail: string;
   department?: string;
   title?: string;
+  /** zimbraPasswordModifiedTime — perubahan password terakhir menurut Zimbra */
+  passwordChangedAt?: Date;
 }
 
 export interface SplpUser {

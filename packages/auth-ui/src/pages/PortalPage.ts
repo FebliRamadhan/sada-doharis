@@ -1,7 +1,8 @@
 /**
- * Portal SSO — post-login app launcher, per SSO PANRB handoff #8.
- * Sticky navy top bar (logo, search, bell, profile), welcome heading, filter
- * pills, "SERING DIGUNAKAN" (3-col) and "SEMUA APLIKASI" (4-col) grids.
+ * Portal SSO — post-login app launcher.
+ * Sticky navy top bar (logo, bell, profile); a page head with the greeting and
+ * the search; a segmented filter; a strip of frequent apps; and the app
+ * directory as rows. Styling lives in style.css under "PORTAL".
  *
  * Full-bleed: reuses the `.admin-mode` container override (hides the split
  * banner, makes #app full-height). main.ts clears `.admin-mode` on navigation.
@@ -36,7 +37,7 @@ const APPS: AppItem[] = [
     abbr: 'SA',
     name: 'SI-ASN',
     desc: 'Sistem Informasi ASN',
-    color: '#005598',
+    color: 'var(--panrb-blue)',
     category: 'kepegawaian',
     frequent: true,
   },
@@ -44,7 +45,7 @@ const APPS: AppItem[] = [
     abbr: 'eK',
     name: 'e-Kinerja',
     desc: 'Penilaian kinerja pegawai',
-    color: '#01347C',
+    color: 'var(--panrb-navy)',
     category: 'kepegawaian',
     frequent: true,
   },
@@ -52,7 +53,7 @@ const APPS: AppItem[] = [
     abbr: 'SB',
     name: 'SIASN BKN',
     desc: 'Layanan kepegawaian BKN',
-    color: '#2894D9',
+    color: 'var(--panrb-blue-light)',
     category: 'kepegawaian',
     frequent: true,
   },
@@ -60,56 +61,56 @@ const APPS: AppItem[] = [
     abbr: 'LP',
     name: 'LAPOR!',
     desc: 'Pengaduan layanan publik',
-    color: '#C1272D',
+    color: 'var(--panrb-red)',
     category: 'layanan',
   },
   {
     abbr: 'SP',
     name: 'SP4N',
     desc: 'Sistem pengelolaan pengaduan',
-    color: '#15803D',
+    color: 'var(--color-success)',
     category: 'layanan',
   },
   {
     abbr: 'JD',
     name: 'JDIH',
     desc: 'Dokumentasi & informasi hukum',
-    color: '#7C3AED',
+    color: 'var(--color-type-external)',
     category: 'layanan',
   },
   {
     abbr: 'eO',
     name: 'e-Office',
     desc: 'Perkantoran elektronik',
-    color: '#0F766E',
+    color: 'var(--color-type-gov)',
     category: 'kepegawaian',
   },
   {
     abbr: 'SK',
     name: 'SKP Online',
     desc: 'Sasaran kinerja pegawai',
-    color: '#B45309',
+    color: 'var(--color-warning)',
     category: 'kepegawaian',
   },
   {
     abbr: 'PR',
     name: 'Presensi',
     desc: 'Kehadiran & absensi',
-    color: '#005598',
+    color: 'var(--panrb-blue)',
     category: 'kepegawaian',
   },
   {
     abbr: 'DK',
     name: 'Diklat',
     desc: 'Pendidikan & pelatihan',
-    color: '#01347C',
+    color: 'var(--panrb-navy)',
     category: 'kepegawaian',
   },
   {
     abbr: 'AR',
     name: 'Arsip',
     desc: 'Manajemen arsip digital',
-    color: '#5E7896',
+    color: 'var(--color-text-muted)',
     category: 'layanan',
   },
 ];
@@ -142,35 +143,48 @@ export async function PortalPage(): Promise<void> {
   render(app, user);
 }
 
+const CATEGORY_LABEL: Record<Category, string> = {
+  kepegawaian: 'Kepegawaian',
+  layanan: 'Layanan publik',
+};
+
+const ICON_OPEN =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>';
+
 function render(app: HTMLElement, user: User): void {
   const initial = user.name.charAt(0).toUpperCase();
   app.innerHTML = `
-    <div style="position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;background:var(--color-background);overflow-y:auto;">
+    <div class="portal">
       ${topbar(user, initial)}
-      <div style="flex:1;">
-        <div style="max-width:1080px;margin:0 auto;padding:var(--space-8) var(--space-6);">
-          <div style="margin-bottom:var(--space-6);">
-            <h1 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:var(--font-3xl);font-weight:800;color:var(--panrb-navy);letter-spacing:-0.02em;">Selamat datang, ${user.name.split(' ')[0]}</h1>
-            <p style="color:var(--color-text-muted);font-size:var(--font-sm);margin-top:4px;" id="app-count"></p>
+      <main class="portal-main">
+        ${passwordBanner(user)}
+        <div class="portal-head">
+          <div class="portal-head-text">
+            <h1>Selamat datang, ${user.name.split(' ')[0]}</h1>
+            <p id="app-count"></p>
           </div>
-
-          <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-8);flex-wrap:wrap;" id="filters">
-            ${pill('semua', 'Semua')}
-            ${pill('kepegawaian', 'Kepegawaian')}
-            ${pill('layanan', 'Layanan Publik')}
-          </div>
-
-          <div id="frequent-section">
-            <div style="font-size:var(--font-xs);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-text-muted);margin-bottom:var(--space-4);">Sering Digunakan</div>
-            <div id="frequent-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--space-4);margin-bottom:var(--space-8);"></div>
-          </div>
-
-          <div>
-            <div style="font-size:var(--font-xs);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-text-muted);margin-bottom:var(--space-4);">Semua Aplikasi</div>
-            <div id="all-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--space-4);"></div>
+          <div class="portal-search">
+            <svg class="portal-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input id="portal-search" type="text" placeholder="Cari aplikasi" aria-label="Cari aplikasi" autocomplete="off" value="${searchTerm.replace(/"/g, '&quot;')}">
           </div>
         </div>
-      </div>
+
+        <div class="portal-filters" id="filters" role="group" aria-label="Filter kategori">
+          ${pill('semua', 'Semua')}
+          ${pill('kepegawaian', CATEGORY_LABEL.kepegawaian)}
+          ${pill('layanan', CATEGORY_LABEL.layanan)}
+        </div>
+
+        <section id="frequent-section" class="portal-section" aria-labelledby="frequent-title">
+          <h2 id="frequent-title">Sering digunakan</h2>
+          <div id="frequent-grid" class="portal-frequent"></div>
+        </section>
+
+        <section class="portal-section" aria-labelledby="all-title">
+          <h2 id="all-title">Semua aplikasi</h2>
+          <div id="all-grid" class="portal-directory"></div>
+        </section>
+      </main>
     </div>
   `;
 
@@ -181,76 +195,91 @@ function render(app: HTMLElement, user: User): void {
 
 function topbar(user: User, initial: string): string {
   return `
-    <header class="portal-topbar" style="position:sticky;top:0;z-index:10;background:var(--panrb-navy);box-shadow:0 2px 12px rgba(0,35,90,.25);">
-     <div class="portal-topbar-inner" style="max-width:1080px;margin:0 auto;width:100%;box-sizing:border-box;height:72px;display:flex;align-items:center;gap:var(--space-5);padding:0 var(--space-6);">
-      <div style="display:flex;align-items:center;gap:12px;white-space:nowrap;flex-shrink:0;">
-        <span style="display:inline-flex;align-items:center;background:#fff;border-radius:9px;padding:5px 10px;">
-          <img src="/logo-panrb.png" alt="Logo Kementerian PANRB" style="height:30px;width:auto;display:block;">
-        </span>
-        <span class="portal-logo-text" style="color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:1.0625rem;border-left:1px solid rgba(255,255,255,.22);padding-left:12px;">Portal Layanan</span>
-      </div>
-      <div class="portal-search-wrap" style="flex:1;min-width:0;max-width:420px;position:relative;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input id="portal-search" type="text" placeholder="Cari aplikasi..." aria-label="Cari aplikasi"
-               style="width:100%;box-sizing:border-box;height:38px;border:none;border-radius:10px;background:rgba(255,255,255,.14);color:#fff;padding:0 12px 0 36px;font-size:var(--font-sm);outline:none;">
-      </div>
-      <button type="button" aria-label="Notifikasi" style="position:relative;background:none;border:none;cursor:pointer;color:#fff;display:flex;padding:6px;flex-shrink:0;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-        <span style="position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:var(--panrb-gold);border:1.5px solid var(--panrb-navy);"></span>
-      </button>
-      <div style="position:relative;flex-shrink:0;">
-        <button type="button" id="profile-btn" aria-haspopup="true" style="display:flex;align-items:center;gap:var(--space-2);background:none;border:none;cursor:pointer;color:#fff;">
-          <span style="width:34px;height:34px;border-radius:50%;background:var(--panrb-gold);color:var(--panrb-navy);display:flex;align-items:center;justify-content:center;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;flex-shrink:0;">${initial}</span>
-          <span style="text-align:left;line-height:1.2;display:none;" class="portal-profile-text">
-            <span style="display:block;font-size:var(--font-sm);font-weight:600;">${user.name}</span>
-            <span style="display:block;font-size:11px;color:rgba(255,255,255,.6);">${user.email}</span>
-          </span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <div id="profile-menu" style="display:none;position:absolute;right:0;top:46px;background:#fff;border:1px solid var(--color-border);border-radius:12px;box-shadow:0 12px 32px rgba(1,52,124,.18);min-width:210px;padding:8px;z-index:30;">
-          <div style="padding:8px 10px;border-bottom:1px solid var(--color-border-subtle);margin-bottom:4px;">
-            <div style="font:600 13px 'Inter';color:var(--color-text);">${user.name}</div>
-            <div style="font:400 12px 'Inter';color:var(--color-text-muted);overflow:hidden;text-overflow:ellipsis;">${user.email}</div>
+    <header class="portal-topbar">
+      <div class="portal-topbar-inner">
+        <div class="portal-brand">
+          <span class="portal-logo"><img src="/logo-panrb.png" alt="Logo Kementerian PANRB" width="139" height="30"></span>
+          <span class="portal-logo-text">Portal Layanan</span>
+        </div>
+        <div class="portal-topbar-actions">
+          <button type="button" class="portal-icon-btn" aria-label="Notifikasi">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          </button>
+          <div class="portal-profile">
+            <button type="button" id="profile-btn" class="portal-profile-btn" aria-haspopup="true" aria-label="Menu akun ${user.name}">
+              <span class="portal-avatar" aria-hidden="true">${initial}</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="profile-menu" class="portal-menu" style="display:none;">
+              <div class="portal-menu-who">
+                <div class="portal-menu-name">${user.name}</div>
+                <div class="portal-menu-email">${user.email}</div>
+              </div>
+              ${user.userType === 'INTERNAL' ? `<a class="portal-menu-item" href="/password/change">Ganti password</a>` : ''}
+              ${user.isAdmin ? `<a class="portal-menu-item" href="/admin">Admin panel</a>` : ''}
+              <button type="button" id="portal-logout" class="portal-menu-item is-danger">Keluar</button>
+            </div>
           </div>
-          ${user.isAdmin ? `<a href="/admin" style="display:block;padding:8px 10px;border-radius:8px;font:600 13px 'Inter';color:var(--color-text);text-decoration:none;">Admin Panel</a>` : ''}
-          <button type="button" id="portal-logout" style="width:100%;text-align:left;padding:8px 10px;border:none;background:none;cursor:pointer;border-radius:8px;font:600 13px 'Inter';color:#C0392B;">Keluar</button>
         </div>
       </div>
-     </div>
     </header>
+  `;
+}
+
+/** Peringatan Masa Berlaku Password (hari ke-76 s.d. 89). */
+function passwordBanner(user: User): string {
+  const expiry = user.passwordExpiry;
+  if (!expiry || expiry.status !== 'warning' || expiry.daysLeft === null) return '';
+  return `
+    <div role="status" class="portal-notice">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span class="portal-notice-text">Password Anda kedaluwarsa dalam <b>${expiry.daysLeft} hari</b>.</span>
+      <a class="text-link" href="/password/change">Ganti sekarang</a>
+    </div>
   `;
 }
 
 function pill(value: string, label: string): string {
   const active = value === activeFilter;
-  return `<button type="button" class="portal-pill" data-filter="${value}"
-    style="padding:8px 16px;border-radius:999px;border:1.5px solid ${active ? 'var(--panrb-blue)' : 'var(--color-border)'};
-    background:${active ? 'var(--panrb-blue)' : 'var(--color-surface)'};color:${active ? '#fff' : 'var(--color-text-secondary)'};
-    font-size:var(--font-sm);font-weight:600;cursor:pointer;transition:all .15s;">${label}</button>`;
+  return `<button type="button" class="portal-pill" data-filter="${value}" aria-pressed="${active}">${label}</button>`;
 }
 
+/** big = baris direktori (Semua aplikasi); kecil = ubin peluncur (Sering digunakan). */
 function appCard(a: AppItem, big: boolean): string {
-  const size = big ? 52 : 48;
+  if (!big) {
+    return `
+      <a href="${a.url ?? '#'}" class="portal-app-card portal-tile">
+        <span class="portal-mono" aria-hidden="true">${a.abbr}</span>
+        <span class="portal-tile-name">${a.name}</span>
+      </a>
+    `;
+  }
   return `
-    <a href="${a.url ?? '#'}" class="portal-app-card"
-       style="display:block;background:var(--color-surface);border:1px solid var(--color-border-subtle);border-radius:var(--radius-xl);
-       padding:var(--space-5);text-decoration:none;transition:transform .15s,box-shadow .15s;box-shadow:0 1px 3px rgba(13,27,42,.04);">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:var(--space-3);">
-        <span style="width:${size}px;height:${size}px;border-radius:14px;background:${a.color};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif;">${a.abbr}</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-      </div>
-      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;color:var(--color-text);margin-bottom:2px;">${a.name}</div>
-      <div style="font-size:var(--font-xs);color:var(--color-text-muted);line-height:1.5;">${a.desc}</div>
+    <a href="${a.url ?? '#'}" class="portal-app-card portal-row">
+      <span class="portal-mono" aria-hidden="true">${a.abbr}</span>
+      <span class="portal-row-text">
+        <span class="portal-row-name">${a.name}</span>
+        <span class="portal-row-desc">${a.desc}</span>
+      </span>
+      <span class="portal-row-cat">${CATEGORY_LABEL[a.category]}</span>
+      <span class="portal-row-open">${ICON_OPEN}</span>
     </a>
   `;
 }
 
 function requestCard(): string {
   return `
-    <a href="#" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:transparent;border:1.5px dashed var(--color-border);border-radius:var(--radius-xl);padding:var(--space-5);text-decoration:none;color:var(--color-text-muted);min-height:120px;">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      <span style="font-size:var(--font-sm);font-weight:600;">Ajukan akses</span>
-    </a>
+    <p class="portal-request">Aplikasi yang Anda cari belum ada? <a class="text-link" href="#">Ajukan akses</a></p>
+  `;
+}
+
+function emptyState(): string {
+  const term = searchTerm.trim();
+  return `
+    <div class="portal-empty">
+      <p class="portal-empty-title">${term ? `Tidak ada aplikasi yang cocok dengan “${term.replace(/</g, '&lt;')}”.` : 'Belum ada aplikasi di kategori ini.'}</p>
+      <p>Coba kata lain atau pilih kategori Semua.</p>
+    </div>
   `;
 }
 
@@ -277,19 +306,9 @@ function renderGrids(): void {
   // Hide the "frequent" section when filtering/searching narrows it out.
   if (freqSection) freqSection.style.display = frequent.length ? 'block' : 'none';
   if (freqGrid) freqGrid.innerHTML = frequent.map((a) => appCard(a, false)).join('');
-  if (allGrid) allGrid.innerHTML = list.map((a) => appCard(a, true)).join('') + requestCard();
-
-  // Hover lift.
-  document.querySelectorAll<HTMLElement>('.portal-app-card').forEach((el) => {
-    el.addEventListener('mouseenter', () => {
-      el.style.transform = 'translateY(-2px)';
-      el.style.boxShadow = '0 10px 24px -10px rgba(1,52,124,.28)';
-    });
-    el.addEventListener('mouseleave', () => {
-      el.style.transform = 'none';
-      el.style.boxShadow = '0 1px 3px rgba(13,27,42,.04)';
-    });
-  });
+  if (allGrid)
+    allGrid.innerHTML =
+      (list.length ? list.map((a) => appCard(a, true)).join('') : emptyState()) + requestCard();
 }
 
 function wireFilters(app: HTMLElement, user: User): void {

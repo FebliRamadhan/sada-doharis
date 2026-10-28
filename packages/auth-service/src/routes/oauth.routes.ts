@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { oauthService } from '../services/oauth.service.js';
 import { tokenService } from '../services/token.service.js';
+import { getPasswordExpiry } from '../services/password-expiry.service.js';
 import { sessionService } from '../services/session.service.js';
 import { prisma } from '../config/database.js';
 import { getRedis } from '../config/redis.js';
@@ -192,6 +193,20 @@ router.get('/authorize', async (req: Request, res: Response, next: NextFunction)
       // This is what makes app2 skip the login page after app1 already authed.
       const sessionUserId = await sessionService.getUserId(req);
       if (sessionUserId) userId = sessionUserId;
+    }
+
+    // Masa Berlaku Password: sesi milik user yang passwordnya kedaluwarsa tidak
+    // boleh dipakai untuk SSO diam-diam. Akhiri sesinya dan arahkan ke login,
+    // tempat langkah ganti password menunggu setelah kedua faktor.
+    if (userId) {
+      const holder = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { userType: true, passwordChangedAt: true, passwordMustChange: true },
+      });
+      if (holder && getPasswordExpiry(holder).status === 'expired') {
+        await sessionService.destroy(req, res);
+        userId = '';
+      }
     }
 
     if (!userId) {

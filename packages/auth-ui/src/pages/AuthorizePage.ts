@@ -7,6 +7,7 @@
  */
 import { endpoints, apiRequest, setStoredUser, type User, type OAuthClient } from '../api';
 import { router, getAppContainer, getQueryParams } from '../router';
+import { brandPanel, MOBILE_LOGO } from '../shell';
 
 interface OAuthParams {
   clientId: string;
@@ -28,23 +29,23 @@ interface OAuthParams {
 const SCOPE_ID: Record<string, { text: string; icon: string }> = {
   openid: {
     text: 'Memverifikasi identitas Anda',
-    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#005598" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
   },
   profile: {
     text: 'Melihat data profil dasar (nama, NIP, instansi)',
-    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#005598" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
   },
   email: {
     text: 'Melihat alamat email instansi',
-    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#005598" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
   },
   offline_access: {
     text: 'Mengakses data saat Anda sedang offline',
-    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#005598" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>',
   },
 };
 const DEFAULT_SCOPE_ICON =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#005598" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
 
 export async function AuthorizePage(): Promise<void> {
   const app = getAppContainer();
@@ -52,18 +53,19 @@ export async function AuthorizePage(): Promise<void> {
 
   app.innerHTML = `
     <div class="sso-auth">
-      ${brandPanel()}
-      <div class="sso-form" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 40px;position:relative;overflow-y:auto;">
-        <div style="width:100%;max-width:400px;">
-          <div id="loading-state" style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:40px 0;text-align:center;">
+      ${brandPanel('Berikan izin akses aplikasi dengan aman melalui Single Sign-On PANRB.')}
+      <div class="sso-form">
+        ${MOBILE_LOGO}
+        <div class="sso-form-body">
+          <div id="loading-state" class="auth-state" role="status">
             <div class="spinner spinner-dark spinner-lg"></div>
-            <p style="font:500 13px 'Inter';color:#5E7896;">Memuat detail otorisasi...</p>
+            <p>Memuat detail otorisasi…</p>
           </div>
           <div id="auth-content" style="display:none;"></div>
-          <div id="error-state" style="display:none;flex-direction:column;align-items:center;gap:14px;padding:30px 0;text-align:center;" role="alert">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            <p id="error-message" style="font:500 14px 'Inter';color:#354E6B;">Terjadi kesalahan</p>
-            <a href="/login" style="font:600 13px 'Inter';color:#005598;text-decoration:none;">Kembali ke Login</a>
+          <div id="error-state" class="auth-state is-error" style="display:none;" role="alert">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p id="error-message">Terjadi kesalahan</p>
+            <a class="text-link" href="/login">Kembali ke login</a>
           </div>
         </div>
       </div>
@@ -71,25 +73,6 @@ export async function AuthorizePage(): Promise<void> {
   `;
 
   await init();
-}
-
-function brandPanel(): string {
-  return `
-    <div class="sso-brand" style="position:relative;width:46%;min-width:420px;overflow:hidden;padding:56px 56px 44px;display:flex;flex-direction:column;justify-content:space-between;color:#fff;background:radial-gradient(circle at 16% 10%, rgba(245,194,24,.18), transparent 40%), radial-gradient(circle at 88% 92%, rgba(40,148,217,.28), transparent 46%), linear-gradient(158deg,#01347C 0%,#00235A 100%);">
-      <div style="position:absolute;top:-120px;right:-120px;width:340px;height:340px;border-radius:50%;border:1.5px solid rgba(255,255,255,.07)"></div>
-      <div style="position:absolute;top:-60px;right:-60px;width:220px;height:220px;border-radius:50%;border:1.5px solid rgba(255,255,255,.07)"></div>
-      <div style="position:relative;">
-        <div style="display:inline-flex;align-items:center;background:#fff;border-radius:14px;padding:10px 18px;box-shadow:0 4px 20px rgba(0,0,0,.25);">
-          <img src="/logo-panrb.png" alt="Logo Kementerian PANRB" style="height:44px;width:auto;display:block;">
-        </div>
-      </div>
-      <div style="position:relative;max-width:380px;">
-        <div style="font:800 34px/1.18 'Plus Jakarta Sans';margin-bottom:16px;">Satu akun untuk semua layanan PANRB.</div>
-        <div style="font:400 14px/1.6 'Inter';color:rgba(255,255,255,.72);">Berikan izin akses aplikasi dengan aman melalui Single Sign-On PANRB.</div>
-      </div>
-      <div style="position:relative;font:500 11px 'Inter';color:rgba(255,255,255,.5);">© 2026 Kementerian PANRB · Republik Indonesia</div>
-    </div>
-  `;
 }
 
 function getOAuthParams(): OAuthParams | null {
@@ -142,43 +125,33 @@ function renderAuthContent(user: User, client: OAuthClient, oauthParams: OAuthPa
     .split(' ')
     .filter(Boolean)
     .map((scope) => {
-      const s = SCOPE_ID[scope] ?? { text: `Mengakses ${scope}`, icon: DEFAULT_SCOPE_ICON };
-      return `
-        <div style="display:flex;gap:12px;align-items:flex-start;">
-          <div style="width:24px;height:24px;border-radius:7px;background:#EEF4FB;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${s.icon}</div>
-          <div style="font:500 13px/1.4 'Inter';color:#354E6B;">${s.text}</div>
-        </div>`;
+      const s = SCOPE_ID[scope] ?? { text: `Mengakses ${esc(scope)}`, icon: DEFAULT_SCOPE_ICON };
+      return `<li class="consent-scope"><span class="consent-scope-icon">${s.icon}</span><span>${s.text}</span></li>`;
     })
     .join('');
 
   content.innerHTML = `
-    <!-- App ↔ PANRB avatars -->
-    <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:22px;">
-      <div style="width:50px;height:50px;border-radius:13px;background:#005598;display:flex;align-items:center;justify-content:center;font:700 14px 'Inter';color:#fff;">${appAbbr}</div>
-      <div style="display:flex;gap:4px;">
-        <div style="width:5px;height:5px;border-radius:50%;background:#C8D8EA;"></div>
-        <div style="width:5px;height:5px;border-radius:50%;background:#C8D8EA;"></div>
-        <div style="width:5px;height:5px;border-radius:50%;background:#C8D8EA;"></div>
+    <div class="consent-head">
+      <span class="consent-mono" aria-hidden="true">${esc(appAbbr)}</span>
+      <div class="form-header">
+        <h1>${esc(client.name)} meminta akses</h1>
+        <p>ke akun PANRB Anda (${esc(user.email)})</p>
       </div>
-      <div style="width:50px;height:50px;border-radius:50%;border:2.5px solid #01347C;display:flex;align-items:center;justify-content:center;font:800 16px 'Plus Jakarta Sans';color:#01347C;">P</div>
     </div>
 
-    <div style="font:800 22px/1.35 'Plus Jakarta Sans';color:#0D1B2A;text-align:center;margin-bottom:6px;"><b>${client.name}</b> meminta akses</div>
-    <div style="font:400 13px 'Inter';color:#5E7896;text-align:center;margin-bottom:24px;">ke akun PANRB Anda (${user.email})</div>
-
-    <div style="font:600 11px 'Inter';color:#9DB2C9;letter-spacing:.6px;margin-bottom:13px;">APLIKASI INI AKAN DAPAT</div>
-    <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:28px;">
+    <p class="consent-lead">Aplikasi ini akan dapat:</p>
+    <ul class="consent-scopes">
       ${scopeRows}
+    </ul>
+
+    <div class="consent-actions">
+      <button type="button" id="btn-deny" class="btn btn-deny">Tolak</button>
+      <button type="button" id="btn-allow" class="btn btn-allow">Izinkan</button>
     </div>
 
-    <div style="display:flex;gap:12px;">
-      <button type="button" id="btn-deny" style="flex:1;height:48px;border:1.5px solid #C8D8EA;border-radius:11px;background:#fff;color:#354E6B;font:700 13px 'Inter';cursor:pointer;transition:background .15s;">Tolak</button>
-      <button type="button" id="btn-allow" style="flex:1;height:48px;border:none;border-radius:11px;background:#005598;color:#fff;font:700 13px 'Inter';cursor:pointer;box-shadow:0 6px 16px -6px rgba(0,85,152,.5);transition:background .15s;display:flex;align-items:center;justify-content:center;gap:8px;">Izinkan</button>
-    </div>
+    <p class="consent-note">Dengan mengizinkan, Anda menyetujui pembagian data sesuai kebijakan privasi.</p>
 
-    <div style="text-align:center;margin-top:18px;font:400 11px 'Inter';color:#9DB2C9;">Dengan mengizinkan, Anda menyetujui pembagian data sesuai kebijakan privasi.</div>
-
-    <div style="text-align:center;margin-top:20px;font:500 12px 'Inter';color:#5E7896;">Masuk sebagai ${user.name} · <a href="/login" style="color:#005598;font-weight:600;text-decoration:none;">Ganti akun</a></div>
+    <p class="consent-who"><span>Masuk sebagai ${esc(user.name)}</span><a class="text-link" href="/login">Ganti akun</a></p>
   `;
 
   document.getElementById('btn-deny')?.addEventListener('click', () => handleDeny(oauthParams));
@@ -200,7 +173,7 @@ async function handleAllow(oauthParams: OAuthParams): Promise<void> {
   const btnDeny = document.getElementById('btn-deny') as HTMLButtonElement | null;
   if (btnAllow) {
     btnAllow.disabled = true;
-    btnAllow.innerHTML = '<div class="spinner"></div> Memproses...';
+    btnAllow.innerHTML = '<div class="spinner"></div> Memproses…';
   }
   if (btnDeny) btnDeny.disabled = true;
 
@@ -284,4 +257,12 @@ async function init(): Promise<void> {
   } catch {
     showError('Gagal memuat detail otorisasi. Silakan coba kembali.');
   }
+}
+
+function esc(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

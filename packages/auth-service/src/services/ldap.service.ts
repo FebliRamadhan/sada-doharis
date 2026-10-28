@@ -1,5 +1,6 @@
 import ldap from 'ldapjs';
 import { createLogger, UnauthorizedError, type LdapUser } from '@sada/shared';
+import { parseGeneralizedTime } from './zimbra.service.js';
 
 const logger = createLogger('ldap-service');
 
@@ -49,7 +50,15 @@ export const ldapService = {
         const searchOptions: ldap.SearchOptions = {
           filter: searchFilter,
           scope: 'sub',
-          attributes: ['dn', 'uid', 'cn', 'mail', 'department', 'title'],
+          attributes: [
+            'dn',
+            'uid',
+            'cn',
+            'mail',
+            'department',
+            'title',
+            'zimbraPasswordModifiedTime',
+          ],
         };
 
         client.search(LDAP_SEARCH_BASE, searchOptions, (searchErr, res) => {
@@ -116,10 +125,20 @@ export const ldapService = {
                   return;
                 }
 
+                // ldapjs v3 tidak lagi punya `entry.object`; atributnya ada di
+                // `entry.attributes` ({ type, values }). Tanpa ini mail/cn dan
+                // zimbraPasswordModifiedTime selalu kosong. `object` tetap
+                // didukung untuk entri gaya lama (dipakai mock di unit test).
                 const getAttribute = (name: string): string | undefined => {
-                  const e = userEntry as unknown as { object?: Record<string, unknown> };
-                  const attr = e.object?.[name];
-                  if (Array.isArray(attr)) return String(attr[0]);
+                  const e = userEntry as unknown as {
+                    object?: Record<string, unknown>;
+                    attributes?: { type: string; values: unknown[] }[];
+                  };
+                  const fromAttributes = e.attributes?.find(
+                    (a) => a.type.toLowerCase() === name.toLowerCase()
+                  )?.values?.[0];
+                  const attr = fromAttributes ?? e.object?.[name];
+                  if (Array.isArray(attr)) return attr.length ? String(attr[0]) : undefined;
                   return attr ? String(attr) : undefined;
                 };
 
@@ -130,6 +149,8 @@ export const ldapService = {
                   mail: getAttribute('mail') ?? '',
                   department: getAttribute('department'),
                   title: getAttribute('title'),
+                  passwordChangedAt:
+                    parseGeneralizedTime(getAttribute('zimbraPasswordModifiedTime')) ?? undefined,
                 };
 
                 logger.info('LDAP authentication successful', { username });

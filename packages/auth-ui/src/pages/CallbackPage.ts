@@ -9,53 +9,35 @@ export async function CallbackPage(): Promise<void> {
   const app = getAppContainer();
 
   app.innerHTML = `
-        <div class="auth-card">
-            <div class="brand">
-                <div class="brand-logo">S</div>
-                <h1 id="title">Processing</h1>
-                <p id="subtitle">Please wait...</p>
-            </div>
+    <div class="auth-card">
+      <div class="form-header">
+        <h1 id="title">Processing</h1>
+        <p id="subtitle">Please wait…</p>
+      </div>
 
-            <!-- Loading State -->
-            <div id="loading-state" class="loading-state">
-                <div class="spinner spinner-lg"></div>
-                <p id="status-message">Processing authentication...</p>
-            </div>
+      <div id="loading-state" class="auth-state" role="status">
+        <div class="spinner spinner-dark spinner-lg"></div>
+        <p id="status-message">Processing authentication…</p>
+      </div>
 
-            <!-- Success State -->
-            <div id="success-state" class="loading-state" style="display: none;">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)"
-                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                    <polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
-                <p>Authentication successful!</p>
-            </div>
+      <div id="success-state" class="auth-state is-success" style="display: none;" role="status">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+        <p>Authentication successful!</p>
+      </div>
 
-            <!-- Error State -->
-            <div id="error-state" class="loading-state" style="display: none;">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-error)"
-                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                <p id="error-message">Something went wrong</p>
-                <p id="error-details" style="font-size: var(--font-sm); color: var(--color-text-secondary);"></p>
-                <a href="/login" class="btn btn-secondary" style="width: auto; margin-top: var(--space-4);">
-                    Back to Login
-                </a>
-            </div>
+      <div id="error-state" class="auth-state is-error" style="display: none;" role="alert">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+        <p id="error-message">Something went wrong</p>
+        <p id="error-details" class="auth-state-detail"></p>
+        <a href="/login" class="btn btn-secondary is-inline">Back to Login</a>
+      </div>
 
-            <div class="security-badge">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                </svg>
-                <span>Secured connection</span>
-            </div>
-        </div>
-    `;
+      <p class="security-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+        <span>Secured connection</span>
+      </p>
+    </div>
+  `;
 
   handleCallback();
 }
@@ -118,7 +100,7 @@ async function handleCallback(): Promise<void> {
   // Check for authorization code
   const code = params.get('code');
   if (code) {
-    showLoading('Processing authorization code...');
+    showLoading('Processing authorization code…');
     showSuccess();
 
     // If there's a parent window (popup flow), communicate with it
@@ -139,7 +121,7 @@ async function handleCallback(): Promise<void> {
   // Check for access token (implicit flow or direct token)
   const accessToken = params.get('access_token');
   if (accessToken) {
-    showLoading('Storing access token...');
+    showLoading('Storing access token…');
     setStoredToken(accessToken);
 
     // Try to get user info if available
@@ -166,7 +148,7 @@ async function handleCallback(): Promise<void> {
   // Check for SPLP callback
   const splpToken = params.get('splp_token');
   if (splpToken) {
-    showLoading('Verifying SPLP authentication...');
+    showLoading('Verifying SPLP authentication…');
     showSuccess();
     return;
   }
