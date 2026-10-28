@@ -13,6 +13,7 @@ import { requestId } from './middleware/requestId.js';
 import { oauthRoutes } from './routes/oauth.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { mfaRoutes } from './routes/mfa.routes.js';
+import { passwordRoutes } from './routes/password.routes.js';
 import { clientRoutes } from './routes/client.routes.js';
 import { userRoutes } from './routes/user.routes.js';
 import { healthRoutes } from './routes/health.routes.js';
@@ -118,6 +119,7 @@ app.use('/oauth', oidcRoutes); // /oauth/userinfo, /oauth/introspect, /oauth/log
 app.use('/auth', authRoutes);
 // MFA routes declare absolute paths (/auth/mfa/*, /admin/mfa/*) → mount at root.
 app.use('/', mfaRoutes);
+app.use('/', passwordRoutes); // /auth/password/*
 app.use('/clients', clientRoutes);
 app.use('/users', userRoutes);
 app.use('/audit-logs', auditRoutes);

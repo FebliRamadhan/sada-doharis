@@ -57,6 +57,8 @@ export async function adminGuard(req: Request, res: Response, next: NextFunction
       return;
     }
 
+    // Untuk audit: siapa admin yang melakukan aksi.
+    res.locals['adminUserId'] = resolvedUserId;
     next();
   } catch (error) {
     // Termasuk kegagalan database: diserahkan ke error handler, bukan dibiarkan

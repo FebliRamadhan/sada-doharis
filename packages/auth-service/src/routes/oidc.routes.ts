@@ -8,7 +8,7 @@ import { clientService } from '../services/client.service.js';
 import { sessionService } from '../services/session.service.js';
 import { pegawaiService } from '../services/pegawai.service.js';
 import { getJWKS, getPublicKey } from '../config/keys.js';
-import { getRedis } from '../config/redis.js';
+import { revokeAllUserAccess } from '../services/login-issuer.service.js';
 import {
   sendSuccess,
   sendError,
@@ -275,28 +275,8 @@ router.get('/logout', async (req: Request, res: Response, next: NextFunction) =>
     }
 
     if (userId) {
-      // Find all active tokens for this user
-      const tokens = await prisma.oAuthToken.findMany({
-        where: { userId },
-        select: { accessToken: true, accessTokenExpiresAt: true },
-      });
-
-      // Add to Redis blacklist before deleting from DB
-      const redis = getRedis();
-      await Promise.all(
-        tokens.map(async (t) => {
-          const ttl = Math.floor((t.accessTokenExpiresAt.getTime() - Date.now()) / 1000);
-          if (ttl > 0) {
-            await redis.setex(`blacklist:${t.accessToken}`, ttl, '1');
-          }
-        })
-      );
-
-      // Revoke all tokens
-      await prisma.oAuthToken.deleteMany({ where: { userId } });
-
-      // End every SSO session belonging to this user (global single sign-out)
-      await sessionService.destroyAllForUser(userId);
+      // Revoke all tokens and end every SSO session (global single sign-out)
+      await revokeAllUserAccess(userId);
     }
 
     // Always clear the cookie on this browser, even if we couldn't resolve a userId

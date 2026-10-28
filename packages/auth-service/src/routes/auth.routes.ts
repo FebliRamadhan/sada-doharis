@@ -8,7 +8,8 @@ import { tokenService } from '../services/token.service.js';
 import { splpService } from '../services/splp.service.js';
 import { ldapService } from '../services/ldap.service.js';
 import { sessionService } from '../services/session.service.js';
-import { maybeRequireMfa } from '../services/login-issuer.service.js';
+import { maybeRequireMfa, maybeRequirePasswordChange } from '../services/login-issuer.service.js';
+import { getPasswordExpiry } from '../services/password-expiry.service.js';
 import { prisma } from '../config/database.js';
 import { getRedis } from '../config/redis.js';
 import {
@@ -163,6 +164,8 @@ router.post('/login', csrfProtect, async (req: Request, res: Response, next: Nex
     // MFA gate (INTERNAL users): if required, response is sent here and no token is issued.
     const scopes = ['profile', 'email'];
     if (await maybeRequireMfa(res, user, scopes)) return;
+    // Masa Berlaku Password: hanya tercapai di sini bila MFA dimatikan.
+    if (await maybeRequirePasswordChange(res, user, scopes)) return;
 
     // Generate tokens
     const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
@@ -266,6 +269,8 @@ router.post('/ldap/login', csrfProtect, async (req: Request, res: Response, next
     // MFA gate (INTERNAL users): if required, response is sent here and no token is issued.
     const scopes = ['profile', 'email', 'internal'];
     if (await maybeRequireMfa(res, user, scopes)) return;
+    // Masa Berlaku Password: hanya tercapai di sini bila MFA dimatikan.
+    if (await maybeRequirePasswordChange(res, user, scopes)) return;
 
     // Generate tokens
     const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);
@@ -837,6 +842,10 @@ router.post('/session/token', csrfProtect, async (req: Request, res: Response) =
     // be able to keep minting tokens from a cookie issued before that happened.
     const user = await userService.findById(userId);
     if (!user.isActive) throw new UnauthorizedError('Session expired');
+    // Password kedaluwarsa: sesi tidak boleh terus memperpanjang diri; user
+    // harus melewati login (dan langkah ganti password) lagi.
+    if (getPasswordExpiry(user).status === 'expired')
+      throw new UnauthorizedError('Session expired');
 
     const scopes = ['profile', 'email'];
     const accessToken = tokenService.generateAccessToken(user.id, 'user', scopes);

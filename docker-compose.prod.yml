@@ -203,6 +203,11 @@ services:
       - MFA_PENDING_TTL=${MFA_PENDING_TTL:-300}
       # Pendaftaran mandiri (POST /auth/register) — default MATI, harus 'true' eksplisit
       - REGISTRATION_ENABLED=${REGISTRATION_ENABLED:-false}
+      # Masa Berlaku Password LDAP — mati selama PASSWORD_EXPIRY_START kosong
+      - PASSWORD_EXPIRY_START=${PASSWORD_EXPIRY_START:-}
+      - PASSWORD_MAX_AGE_DAYS=${PASSWORD_MAX_AGE_DAYS:-90}
+      - PASSWORD_WARNING_DAYS=${PASSWORD_WARNING_DAYS:-14}
+      - ZIMBRA_SOAP_URL=${ZIMBRA_SOAP_URL:-}
       # Rate limiting
       - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-60000}
       - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-100}

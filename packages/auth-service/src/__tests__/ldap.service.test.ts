@@ -134,6 +134,42 @@ describe('ldapService', () => {
       expect(mockDestroy).toHaveBeenCalled();
     });
 
+    it('membaca atribut dari entri bentuk ldapjs v3 (attributes, tanpa .object)', async () => {
+      // ldapjs v3 tidak punya `entry.object`; membacanya membuat mail/cn dan
+      // zimbraPasswordModifiedTime diam-diam kosong di produksi.
+      const searchRes = createSearchResponse();
+      mockSearch.mockImplementation(
+        (_base: string, _opts: unknown, cb: (err: Error | null, res: EventEmitter) => void) => {
+          cb(null, searchRes);
+          process.nextTick(() => {
+            searchRes.emit('searchEntry', {
+              dn: { toString: () => 'uid=budi,ou=people,dc=test' },
+              attributes: [
+                { type: 'uid', values: ['budi'] },
+                { type: 'cn', values: ['Budi Santoso'] },
+                { type: 'mail', values: ['budi.santoso@menpan.go.id'] },
+                { type: 'zimbraPasswordModifiedTime', values: ['20260501080000Z'] },
+              ],
+            });
+            searchRes.emit('end');
+          });
+        }
+      );
+      mockBind.mockImplementation((_dn: string, _pw: string, cb: (err: Error | null) => void) =>
+        cb(null)
+      );
+
+      const { ldapService } = await import('../services/ldap.service.js');
+      const result = await ldapService.authenticate('budi', 'pw');
+
+      expect(result).toMatchObject({
+        uid: 'budi',
+        cn: 'Budi Santoso',
+        mail: 'budi.santoso@menpan.go.id',
+        passwordChangedAt: new Date('2026-05-01T08:00:00Z'),
+      });
+    });
+
     it('should reject when service account bind fails', async () => {
       mockBind.mockImplementation((_dn: string, _pw: string, cb: (err: Error | null) => void) => {
         cb(new Error('Bind failed'));

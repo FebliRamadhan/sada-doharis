@@ -12,6 +12,8 @@ import {
   type UserType,
 } from '@sada/shared';
 import { adminGuard } from '../middleware/adminGuard.js';
+import { auditService } from '../services/audit.service.js';
+import { revokeAllUserAccess } from '../services/login-issuer.service.js';
 
 const router = Router();
 
@@ -33,6 +35,7 @@ const listFilterSchema = z.object({
   status: z.enum(['all', 'active', 'inactive']).optional(),
   type: z.enum(['all', 'INTERNAL', 'GOVERNMENT', 'EXTERNAL']).optional(),
   mfa: z.enum(['all', 'enabled', 'pending']).optional(),
+  password: z.enum(['all', 'ok', 'warning', 'expired']).optional(),
 });
 
 /**
@@ -52,11 +55,12 @@ router.get('/', adminGuard, async (req: Request, res: Response, next: NextFuncti
       status: req.query['status'],
       type: req.query['type'],
       mfa: req.query['mfa'],
+      password: req.query['password'],
     });
     if (!filters.success) {
       throw new ValidationError('Invalid filter', filters.error.flatten().fieldErrors);
     }
-    const { status, type, mfa } = filters.data;
+    const { status, type, mfa, password } = filters.data;
 
     const { users, meta } = await userService.list({
       page,
@@ -65,6 +69,7 @@ router.get('/', adminGuard, async (req: Request, res: Response, next: NextFuncti
       ...(status && status !== 'all' ? { isActive: status === 'active' } : {}),
       ...(type && type !== 'all' ? { userType: type as UserType } : {}),
       ...(mfa && mfa !== 'all' ? { mfaEnabled: mfa === 'enabled' } : {}),
+      ...(password && password !== 'all' ? { passwordStatus: password } : {}),
     });
     sendPaginated(res, users, meta.page, meta.limit, meta.total, {
       active: meta.activeCount,
@@ -94,6 +99,38 @@ router.patch('/:id/status', adminGuard, async (req: Request, res: Response, next
     next(error);
   }
 });
+
+/**
+ * @swagger
+ * /users/{id}/password/require-change:
+ *   post:
+ *     summary: Wajibkan Ganti Password (admin)
+ *     description: >
+ *       Mengakhiri masa berlaku password user INTERNAL seketika dan mencabut
+ *       semua sesinya. Password di Zimbra tidak disentuh.
+ *     tags: [Users]
+ */
+router.post(
+  '/:id/password/require-change',
+  adminGuard,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params['id'] as string;
+      const user = await userService.requirePasswordChange(id);
+      await revokeAllUserAccess(id);
+      void auditService.log({
+        action: 'PASSWORD_CHANGE_REQUIRED',
+        userId: id,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+        details: { by: (res.locals['adminUserId'] as string | undefined) ?? null },
+      });
+      sendSuccess(res, user);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 /**
  * @swagger

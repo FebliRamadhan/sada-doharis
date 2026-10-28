@@ -11,6 +11,7 @@ import { adminGuard } from '../middleware/adminGuard.js';
 import { csrfProtect } from '../middleware/csrf.js';
 import {
   issueUserLogin,
+  maybeRequirePasswordChange,
   peekMfaTicket,
   deleteMfaTicket,
   bumpMfaAttempts,
@@ -114,6 +115,7 @@ router.post(
         userAgent: req.headers['user-agent'],
       });
 
+      if (await maybeRequirePasswordChange(res, user, data.scopes)) return;
       const payload = await issueUserLogin({ req, res, userId: user.id, scopes: data.scopes });
       sendSuccess(res, payload);
     } catch (error) {
@@ -208,6 +210,9 @@ router.post(
         userAgent: req.headers['user-agent'],
       });
 
+      // Kode cadangan hanya ditampilkan sekali — ikut dikirim walau login
+      // masih harus melewati langkah ganti password.
+      if (await maybeRequirePasswordChange(res, user, data.scopes, { backup_codes: plain })) return;
       const payload = await issueUserLogin({ req, res, userId: user.id, scopes: data.scopes });
       sendSuccess(res, { ...payload, backup_codes: plain });
     } catch (error) {

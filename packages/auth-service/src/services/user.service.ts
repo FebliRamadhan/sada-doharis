@@ -6,6 +6,11 @@ import { tokenService } from './token.service.js';
 import { pegawaiService } from './pegawai.service.js';
 import { auditService, AUDIT_ACTIONS } from './audit.service.js';
 import {
+  getPasswordExpiry,
+  passwordStatusWhere,
+  type PasswordStatus,
+} from './password-expiry.service.js';
+import {
   UserType,
   UnauthorizedError,
   NotFoundError,
@@ -52,6 +57,19 @@ async function resetFailedAttempts(userId: string): Promise<void> {
     where: { id: userId },
     data: { failedLoginAttempts: 0, lockedUntil: null },
   });
+}
+
+/**
+ * Perubahan password terakhir yang diketahui: yang paling akhir antara catatan
+ * SADA dan `zimbraPasswordModifiedTime`, supaya ganti password lewat webmail
+ * juga terhitung (CONTEXT.md — Masa Berlaku Password).
+ */
+function latestPasswordChange(
+  known: Date | null | undefined,
+  fromDirectory: Date | undefined
+): Date | undefined {
+  if (!fromDirectory) return known ?? undefined;
+  return known && known > fromDirectory ? known : fromDirectory;
 }
 
 function assertNotLocked(user: { lockedUntil: Date | null; email: string }): void {
@@ -155,7 +173,9 @@ export const userService = {
         };
 
         if (!user) {
-          user = await prisma.user.create({ data: userData });
+          user = await prisma.user.create({
+            data: { ...userData, passwordChangedAt: ldapUser.passwordChangedAt },
+          });
           logger.info('Internal user created via LDAP', { userId: user.id });
         } else {
           // Always update email to fix legacy @internal entries
@@ -166,6 +186,10 @@ export const userService = {
               name: userData.name,
               ldapDn: ldapUser.dn,
               providerId: userData.providerId,
+              passwordChangedAt: latestPasswordChange(
+                user.passwordChangedAt,
+                ldapUser.passwordChangedAt
+              ),
             },
           });
         }
@@ -261,14 +285,16 @@ export const userService = {
           ldapDn: ldapUser.dn,
           provider: 'ldap',
           providerId: ldapUser.uid,
+          passwordChangedAt: ldapUser.passwordChangedAt,
         },
       });
       logger.info('LDAP user created', { userId: user.id });
     } else {
       // Update LDAP info + fix legacy @internal emails
-      const updateData: Record<string, string> = {
+      const updateData: Record<string, string | Date | undefined> = {
         name: ldapUser.cn,
         ldapDn: ldapUser.dn,
+        passwordChangedAt: latestPasswordChange(user.passwordChangedAt, ldapUser.passwordChangedAt),
       };
       if (user.email.endsWith('@internal')) {
         updateData['email'] = resolvedEmail;
@@ -386,6 +412,7 @@ export const userService = {
     isActive?: boolean;
     userType?: UserType;
     mfaEnabled?: boolean;
+    passwordStatus?: PasswordStatus;
   }) {
     const page = Math.max(1, opts.page ?? 1);
     const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
@@ -403,6 +430,10 @@ export const userService = {
     if (opts.isActive !== undefined) where['isActive'] = opts.isActive;
     if (opts.userType) where['userType'] = opts.userType;
     if (opts.mfaEnabled !== undefined) where['mfaEnabled'] = opts.mfaEnabled;
+    if (opts.passwordStatus) {
+      // Digabung lewat AND karena filter status password sendiri memakai OR/NOT.
+      where['AND'] = [passwordStatusWhere(opts.passwordStatus)];
+    }
 
     const [users, total, activeCount] = await Promise.all([
       prisma.user.findMany({
@@ -418,6 +449,8 @@ export const userService = {
           isActive: true,
           provider: true,
           mfaEnabled: true,
+          passwordChangedAt: true,
+          passwordMustChange: true,
           createdAt: true,
         },
       }),
@@ -428,7 +461,7 @@ export const userService = {
     ]);
 
     return {
-      users,
+      users: users.map((u) => ({ ...u, passwordExpiry: getPasswordExpiry(u) })),
       meta: {
         page,
         limit,
@@ -449,6 +482,31 @@ export const userService = {
     });
     logger.info('User active status changed', { userId: id, isActive });
     return user;
+  },
+
+  /**
+   * Admin: Wajibkan Ganti Password (CONTEXT.md). Hanya menandai — password di
+   * Zimbra tidak disentuh; pemanggil mencabut sesi user.
+   */
+  async requirePasswordChange(id: string) {
+    const target = await prisma.user.findUnique({ where: { id }, select: { userType: true } });
+    if (!target) throw new NotFoundError('User', id);
+    if (target.userType !== UserType.INTERNAL) {
+      throw new ConflictError('Masa berlaku password hanya berlaku untuk user INTERNAL');
+    }
+    const user = await prisma.user.update({
+      where: { id },
+      data: { passwordMustChange: true },
+      select: {
+        id: true,
+        email: true,
+        userType: true,
+        passwordChangedAt: true,
+        passwordMustChange: true,
+      },
+    });
+    logger.info('Password change required by admin', { userId: id });
+    return { ...user, passwordExpiry: getPasswordExpiry(user) };
   },
 
   /** Whether an email maps to a resettable local-password account. */
@@ -496,6 +554,8 @@ export const userService = {
     mfaSecret?: string | null;
     mfaBackupCodes?: string[];
     mfaEnabledAt?: Date | null;
+    passwordChangedAt?: Date | null;
+    passwordMustChange?: boolean;
   }) {
     // Never leak the TOTP secret or backup-code hashes. mfaEnabled is safe to expose
     // (the login flow and admin UI need it).
@@ -506,6 +566,7 @@ export const userService = {
       ...sanitized,
       mfaEnabled: sanitized.mfaEnabled ?? false,
       userType: sanitized.userType as UserType,
+      passwordExpiry: getPasswordExpiry(user),
     };
   },
 };

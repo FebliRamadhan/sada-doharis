@@ -8,11 +8,13 @@ import { sessionService } from './session.service.js';
 import { auditService, AUDIT_ACTIONS } from './audit.service.js';
 import { userService } from './user.service.js';
 import { isAdminEmail } from '../middleware/adminGuard.js';
+import { getPasswordExpiry, type PasswordExpirySubject } from './password-expiry.service.js';
 
 const MFA_PENDING_TTL = parseInt(process.env['MFA_PENDING_TTL'] ?? '300', 10);
 
 export const MFA_PENDING_PREFIX = 'mfa_pending:';
 export const MFA_SETUP_PREFIX = 'mfa_setup:';
+export const PWD_CHANGE_PREFIX = 'pwd_change:';
 
 export interface MfaTicketData {
   userId: string;
@@ -110,7 +112,7 @@ export async function maybeRequireMfa(
   return true;
 }
 
-type MfaPrefix = typeof MFA_PENDING_PREFIX | typeof MFA_SETUP_PREFIX;
+type MfaPrefix = typeof MFA_PENDING_PREFIX | typeof MFA_SETUP_PREFIX | typeof PWD_CHANGE_PREFIX;
 
 /**
  * Read a pending MFA ticket WITHOUT consuming it. Returns null when missing/expired.
@@ -149,3 +151,52 @@ export async function bumpMfaAttempts(prefix: MfaPrefix, ticket: string): Promis
 }
 
 export const MFA_MAX_ATTEMPTS = 5;
+
+/**
+ * Gerbang Masa Berlaku Password. Dipanggil SETELAH kedua faktor terbukti, tepat
+ * sebelum token diterbitkan. Bila password kedaluwarsa (atau diwajibkan admin),
+ * menulis tiket ganti password, mengirim `password_change_required`, dan
+ * mengembalikan true — pemanggil harus berhenti. Tiket hanya menyatakan "user
+ * ini sudah lolos login dan wajib ganti password"; password tidak disimpan
+ * (docs/adr/0002).
+ */
+export async function maybeRequirePasswordChange(
+  res: Response,
+  user: { id: string } & PasswordExpirySubject,
+  scopes: string[],
+  extra: Record<string, unknown> = {}
+): Promise<boolean> {
+  if (getPasswordExpiry(user).status !== 'expired') return false;
+
+  const ticket = crypto.randomBytes(32).toString('hex');
+  const data: MfaTicketData = { userId: user.id, scopes };
+  await getRedis().setex(
+    `${PWD_CHANGE_PREFIX}${ticket}`,
+    MFA_PENDING_TTL * 2,
+    JSON.stringify(data)
+  );
+  sendSuccess(res, { ...extra, password_change_required: true, password_ticket: ticket });
+  return true;
+}
+
+/**
+ * Cabut semua akses user: access token masuk blacklist (gateway menolaknya
+ * seketika), baris token dihapus, dan semua sesi SSO diakhiri.
+ */
+export async function revokeAllUserAccess(userId: string): Promise<void> {
+  const tokens = await prisma.oAuthToken.findMany({
+    where: { userId },
+    select: { accessToken: true, accessTokenExpiresAt: true },
+  });
+
+  const redis = getRedis();
+  await Promise.all(
+    tokens.map(async (t) => {
+      const ttl = Math.floor((t.accessTokenExpiresAt.getTime() - Date.now()) / 1000);
+      if (ttl > 0) await redis.setex(`blacklist:${t.accessToken}`, ttl, '1');
+    })
+  );
+
+  await prisma.oAuthToken.deleteMany({ where: { userId } });
+  await sessionService.destroyAllForUser(userId);
+}
