@@ -91,7 +91,10 @@ jobs:
           set -euo pipefail
           cd "$DEPLOY_PATH"
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-          docker compose -f docker-compose.prod.yml pull
+          # Hanya image aplikasi. postgres/redis tidak ikut: menariknya tiap deploy
+          # bisa membuat ulang container database, dan Docker Hub dari server ini
+          # tidak selalu terjangkau.
+          docker compose -f docker-compose.prod.yml pull gateway auth-service auth-ui
           # Token job mati setelah job selesai; jangan tinggalkan login basi di server.
           docker logout ghcr.io
           docker compose -f docker-compose.prod.yml run --rm auth-service \
