@@ -42,49 +42,68 @@ jobs:
             echo "tag=sha-${SHA}" >> "$GITHUB_OUTPUT"
           fi
 
+      # scp/ssh bawaan runner, bukan appleboy/*-action: action berbasis Docker itu
+      # harus menarik image dari ghcr.io, dan runner self-hosted ditolak ("denied").
+      - name: Prepare SSH
+        env:
+          SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          install -m 700 -d "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/ssh/key"
+          chmod 600 "$RUNNER_TEMP/ssh/key"
+
       - name: Copy compose files to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          port: ${{ secrets.PROD_SSH_PORT || 22 }}
-          source: "docker-compose.prod.yml,docker-compose.single-domain.yml,docker/,prisma/"
-          target: ${{ secrets.PROD_DEPLOY_PATH }}
+        env:
+          HOST: ${{ secrets.PROD_HOST }}
+          USER: ${{ secrets.PROD_USER }}
+          PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
+          DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+        run: |
+          scp -i "$RUNNER_TEMP/ssh/key" -P "$PORT" -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+            -r docker-compose.prod.yml docker-compose.single-domain.yml docker prisma \
+            "$USER@$HOST:$DEPLOY_PATH/"
 
       - name: Pull, migrate, restart
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          port: ${{ secrets.PROD_SSH_PORT || 22 }}
-          script: |
-            set -euo pipefail
-            cd "${{ secrets.PROD_DEPLOY_PATH }}"
+        env:
+          HOST: ${{ secrets.PROD_HOST }}
+          USER: ${{ secrets.PROD_USER }}
+          PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
+          DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+          VERSION: ${{ steps.tag.outputs.tag }}
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          REPO_LC="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+          # Nilai dikirim lewat stdin (bukan argumen) supaya token tidak tampak di daftar proses.
+          {
+            printf 'export DEPLOY_PATH=%q VERSION=%q GHCR_USER=%q GHCR_TOKEN=%q\n' \
+              "$DEPLOY_PATH" "$VERSION" "$GHCR_USER" "$GHCR_TOKEN"
+            printf 'export GATEWAY_IMAGE=%q AUTH_SERVICE_IMAGE=%q AUTH_UI_IMAGE=%q\n' \
+              "ghcr.io/$REPO_LC/gateway" "ghcr.io/$REPO_LC/auth-service" "ghcr.io/$REPO_LC/auth-ui"
+            cat <<'SCRIPT'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml run --rm auth-service \
+            pnpm --filter @sada/auth-service exec prisma migrate deploy \
+            --schema=../../prisma/schema.prisma
+          docker compose -f docker-compose.prod.yml up -d --remove-orphans --no-build
+          docker image prune -f
+          SCRIPT
+          } | ssh -i "$RUNNER_TEMP/ssh/key" -p "$PORT" -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+                "$USER@$HOST" 'bash -s'
 
-            # Image references resolve against GHCR; compose reads them via env.
-            # GHCR repository names must be lowercase, so normalise the owner/repo.
-            export VERSION="${{ steps.tag.outputs.tag }}"
-            REPO_LC="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
-            export GATEWAY_IMAGE="ghcr.io/${REPO_LC}/gateway"
-            export AUTH_SERVICE_IMAGE="ghcr.io/${REPO_LC}/auth-service"
-            export AUTH_UI_IMAGE="ghcr.io/${REPO_LC}/auth-ui"
-
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
-              -u "${{ secrets.GHCR_USER }}" --password-stdin
-
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml run --rm auth-service \
-              pnpm --filter @sada/auth-service exec prisma migrate deploy \
-              --schema=../../prisma/schema.prisma
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            docker image prune -f
+      - name: Remove SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ssh"
 
       - name: Healthcheck
         run: |
           for i in {1..20}; do
-            if curl -fsS "${{ vars.PROD_URL }}/health" >/dev/null; then
+            # /api ikut dicek: nginx auth-ui bisa 502 di /api walau /health hijau.
+            if curl -fsS "${{ vars.PROD_URL }}/health" >/dev/null \
+              && curl -fsS "${{ vars.PROD_URL }}/api/auth/config" >/dev/null; then
               echo "Service is healthy"
               exit 0
             fi
