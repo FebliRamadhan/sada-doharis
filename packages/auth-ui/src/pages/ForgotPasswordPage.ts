@@ -13,10 +13,6 @@ import { getAppContainer } from '../router';
 
 const OTP_LEN = 6;
 
-const otpBoxStyle =
-  'width:48px;height:58px;border:1.5px solid #C8D8EA;border-radius:11px;text-align:center;' +
-  "font:700 22px 'Inter';color:#0D1B2A;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s";
-
 interface State {
   step: 1 | 2 | 3 | 4;
   email: string;
@@ -37,7 +33,7 @@ function shell(inner: string): string {
   return `
     <div class="auth-card">
       <div class="mobile-brand-header" aria-hidden="true">
-        <img src="/logo-panrb.png" alt="Logo Kementerian PANRB" height="44" style="width:auto;">
+        <img src="/logo-panrb.png" alt="Logo Kementerian PANRB" width="166" height="36">
       </div>
       <div id="error-alert" class="alert alert-error" role="alert" aria-live="assertive" style="display:none;">
         <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -49,23 +45,14 @@ function shell(inner: string): string {
     </div>`;
 }
 
-function lockIcon(): string {
-  return `<div style="width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:#EEF4FB;margin-bottom:var(--space-5);">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#005598" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-    </svg>
-  </div>`;
-}
-
 function render(): void {
   const app = getAppContainer();
   if (state.step === 1) {
     app.innerHTML = shell(`
-      ${lockIcon()}
       <div class="form-header"><h1>Lupa kata sandi?</h1><p>Masukkan email instansi Anda. Kami akan mengirim kode verifikasi.</p></div>
       <form id="email-form" novalidate>
         <div class="form-group">
-          <label class="form-label" for="email">Alamat Email</label>
+          <label class="form-label" for="email">Alamat email</label>
           <div class="input-wrapper">
             <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
@@ -80,14 +67,13 @@ function render(): void {
     initEmailStep();
   } else if (state.step === 2) {
     app.innerHTML = shell(`
-      ${lockIcon()}
-      <div class="form-header"><h1>Verifikasi kode</h1><p>Masukkan 6 digit kode yang dikirim ke <strong>${state.email}</strong>.</p></div>
+      <div class="form-header"><h1>Verifikasi kode</h1><p>Masukkan 6 digit kode yang dikirim ke <strong>${state.email.replace(/</g, '&lt;')}</strong>.</p></div>
       <form id="otp-form" novalidate>
-        <div id="otp-row" style="display:flex;gap:10px;justify-content:space-between;margin-bottom:var(--space-6);">
+        <div id="otp-row" class="otp-row" role="group" aria-label="Kode verifikasi 6 digit">
           ${Array.from({ length: OTP_LEN })
             .map(
               (_, i) =>
-                `<input type="text" class="otp-box" data-idx="${i}" inputmode="numeric" maxlength="1" autocomplete="${i === 0 ? 'one-time-code' : 'off'}" aria-label="Digit ${i + 1}" style="${otpBoxStyle}" />`
+                `<input type="text" class="otp-box" data-idx="${i}" inputmode="numeric" maxlength="1" autocomplete="${i === 0 ? 'one-time-code' : 'off'}" aria-label="Digit ${i + 1}" />`
             )
             .join('')}
         </div>
@@ -98,7 +84,6 @@ function render(): void {
     initOtpStep();
   } else if (state.step === 3) {
     app.innerHTML = shell(`
-      ${lockIcon()}
       <div class="form-header"><h1>Buat sandi baru</h1><p>Pilih kata sandi yang kuat untuk akun Anda.</p></div>
       <form id="pw-form" novalidate>
         <div class="form-group">
@@ -110,12 +95,12 @@ function render(): void {
             <input type="password" id="password" class="form-input" placeholder="Minimal 8 karakter" required autocomplete="new-password">
           </div>
           <!-- Strength meter -->
-          <div style="display:flex;gap:6px;margin-top:var(--space-2);">
-            <div class="pw-bar" style="flex:1;height:5px;border-radius:999px;background:#E5EEF7;"></div>
-            <div class="pw-bar" style="flex:1;height:5px;border-radius:999px;background:#E5EEF7;"></div>
-            <div class="pw-bar" style="flex:1;height:5px;border-radius:999px;background:#E5EEF7;"></div>
+          <div class="pw-meter" aria-hidden="true">
+            <div class="pw-bar"></div>
+            <div class="pw-bar"></div>
+            <div class="pw-bar"></div>
           </div>
-          <p id="pw-label" style="font-size:var(--font-xs);color:var(--color-text-muted);margin-top:6px;height:14px;"></p>
+          <p id="pw-label" class="pw-label" aria-live="polite"></p>
         </div>
         <div class="form-group">
           <label class="form-label" for="confirm">Konfirmasi sandi</label>
@@ -132,13 +117,8 @@ function render(): void {
     initPwStep();
   } else {
     app.innerHTML = shell(`
-      <div style="text-align:center;">
-        <div style="width:64px;height:64px;border-radius:var(--radius-full);background:#E8F5EC;color:var(--color-success);display:flex;align-items:center;justify-content:center;margin:0 auto var(--space-5);">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-        </div>
-        <div class="form-header" style="text-align:center;"><h1>Sandi diperbarui</h1><p>Silakan masuk dengan kata sandi baru Anda.</p></div>
-        <a href="/login" class="btn btn-primary" style="text-decoration:none;">Kembali masuk</a>
-      </div>
+      <div class="form-header"><h1>Sandi diperbarui</h1><p>Silakan masuk dengan kata sandi baru Anda.</p></div>
+      <a href="/login" class="btn btn-primary">Kembali masuk</a>
     `);
   }
 }
@@ -165,7 +145,7 @@ function initEmailStep(): void {
     e.preventDefault();
     const email = (document.getElementById('email') as HTMLInputElement).value.trim().toLowerCase();
     if (!email) return;
-    busy(true, 'Mengirim...');
+    busy(true, 'Mengirim…');
     const result = await apiRequest<Record<string, unknown>>(endpoints.forgotPassword, {
       method: 'POST',
       body: JSON.stringify({ email }),
@@ -190,14 +170,6 @@ function initOtpStep(): void {
   const boxes = Array.from(document.querySelectorAll<HTMLInputElement>('.otp-box'));
 
   boxes.forEach((box, i) => {
-    box.addEventListener('focus', () => {
-      box.style.borderColor = '#005598';
-      box.style.boxShadow = '0 0 0 3px rgba(0,85,152,.13)';
-    });
-    box.addEventListener('blur', () => {
-      box.style.borderColor = '#C8D8EA';
-      box.style.boxShadow = 'none';
-    });
     box.addEventListener('input', () => {
       box.value = box.value.replace(/\D/g, '').slice(0, 1);
       if (box.value && i < OTP_LEN - 1) boxes[i + 1]!.focus();
@@ -229,7 +201,7 @@ function initOtpStep(): void {
       showError('Masukkan 6 digit kode.');
       return;
     }
-    busy(true, 'Memverifikasi...');
+    busy(true, 'Memverifikasi…');
     const result = await apiRequest<Record<string, unknown>>(endpoints.verifyResetCode, {
       method: 'POST',
       body: JSON.stringify({ email: state.email, code }),
@@ -267,16 +239,16 @@ function initPwStep(): void {
   const bars = Array.from(document.querySelectorAll<HTMLElement>('.pw-bar'));
   const label = document.getElementById('pw-label');
   const meta = [
-    { color: '#C0392B', text: 'Lemah' },
-    { color: '#B45309', text: 'Sedang' },
-    { color: '#15803D', text: 'Kuat' },
+    { color: 'var(--color-error)', text: 'Lemah' },
+    { color: 'var(--color-warning)', text: 'Sedang' },
+    { color: 'var(--color-success)', text: 'Kuat' },
   ];
 
   pw?.addEventListener('input', () => {
     const score = scorePassword(pw.value);
     bars.forEach((bar, i) => {
       bar.style.background =
-        pw.value && i < score ? meta[Math.min(score - 1, 2)]!.color : '#E5EEF7';
+        pw.value && i < score ? meta[Math.min(score - 1, 2)]!.color : 'var(--color-border-subtle)';
     });
     if (label) {
       label.textContent = pw.value
@@ -297,7 +269,7 @@ function initPwStep(): void {
       showError('Konfirmasi sandi tidak cocok.');
       return;
     }
-    busy(true, 'Menyimpan...');
+    busy(true, 'Menyimpan…');
     const result = await apiRequest<Record<string, unknown>>(endpoints.resetPassword, {
       method: 'POST',
       body: JSON.stringify({ email: state.email, code: state.code, password }),

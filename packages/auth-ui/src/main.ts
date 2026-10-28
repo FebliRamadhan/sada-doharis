@@ -16,6 +16,7 @@ import {
   AdminPage,
   MFAVerifyPage,
   MFASetupPage,
+  ChangePasswordPage,
 } from './pages';
 
 // Remove admin overlay on every navigation away from /admin
@@ -45,6 +46,7 @@ router
   .on('/callback', CallbackPage)
   .on('/mfa/verify', MFAVerifyPage)
   .on('/mfa/setup', MFASetupPage)
+  .on('/password/change', ChangePasswordPage)
   .on('/admin', AdminPage)
   .notFound(() => {
     // Redirect unknown routes to home

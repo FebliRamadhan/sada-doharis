@@ -23,7 +23,7 @@ export async function HomePage(): Promise<void> {
     <div class="auth-card">
       <div class="loading-state">
         <div class="spinner spinner-dark spinner-lg"></div>
-        <p>Memuat...</p>
+        <p>Memuat…</p>
       </div>
     </div>`;
 

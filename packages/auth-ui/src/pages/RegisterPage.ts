@@ -24,7 +24,7 @@ const INSTANSI = [
 ];
 
 const chevron =
-  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E7896" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position:absolute;right:var(--space-4);top:50%;transform:translateY(-50%);pointer-events:none;"><polyline points="6 9 12 15 18 9"/></svg>';
+  '<svg class="select-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
 
 function eyeIcon(open: boolean): string {
   return open
@@ -38,7 +38,7 @@ export async function RegisterPage(): Promise<void> {
   app.innerHTML = `
     <div class="auth-card">
       <div class="mobile-brand-header" aria-hidden="true">
-        <img src="/logo-panrb.png" alt="Logo Kementerian PANRB" height="44" style="width:auto;">
+        <img src="/logo-panrb.png" alt="Logo Kementerian PANRB" width="166" height="36">
       </div>
 
       <div class="form-header">
@@ -56,7 +56,7 @@ export async function RegisterPage(): Promise<void> {
       <form id="register-form" novalidate>
         <!-- Nama lengkap + NIP -->
         <div class="form-group">
-          <div style="display:grid;grid-template-columns:1fr 150px;gap:var(--space-3);">
+          <div class="form-split">
             <div>
               <label class="form-label" for="name">Nama lengkap</label>
               <div class="input-wrapper">
@@ -69,8 +69,8 @@ export async function RegisterPage(): Promise<void> {
             <div>
               <label class="form-label" for="nip">NIP</label>
               <div class="input-wrapper">
-                <input type="text" id="nip" name="nip" class="form-input" placeholder="18 digit" inputmode="numeric"
-                       autocomplete="off" style="padding-left:var(--space-4);letter-spacing:.02em;">
+                <input type="text" id="nip" name="nip" class="form-input is-plain" placeholder="18 digit" inputmode="numeric"
+                       autocomplete="off">
               </div>
             </div>
           </div>
@@ -91,7 +91,7 @@ export async function RegisterPage(): Promise<void> {
         <div class="form-group">
           <label class="form-label" for="instansi">Instansi / Kementerian</label>
           <div class="input-wrapper">
-            <select id="instansi" name="instansi" class="form-input" style="padding-left:var(--space-4);padding-right:calc(var(--space-4) + 22px);appearance:none;cursor:pointer;">
+            <select id="instansi" name="instansi" class="form-input is-plain is-select">
               <option value="" disabled selected>Pilih instansi</option>
               ${INSTANSI.map((i) => `<option value="${i}">${i}</option>`).join('')}
             </select>
@@ -106,19 +106,18 @@ export async function RegisterPage(): Promise<void> {
             <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
-            <input type="password" id="password" name="password" class="form-input" placeholder="Minimal 8 karakter"
-                   required autocomplete="new-password" style="padding-right:calc(var(--space-4) + 28px);">
-            <button type="button" id="toggle-pw" aria-label="Tampilkan kata sandi"
-                    style="position:absolute;right:var(--space-3);top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--color-text-muted);display:flex;padding:4px;">
+            <input type="password" id="password" name="password" class="form-input has-trailing" placeholder="Minimal 8 karakter"
+                   required autocomplete="new-password">
+            <button type="button" id="toggle-pw" class="input-trailing-btn" aria-label="Tampilkan kata sandi">
               ${eyeIcon(false)}
             </button>
           </div>
         </div>
 
         <!-- Agree -->
-        <label style="display:flex;align-items:flex-start;gap:var(--space-2);margin-bottom:var(--space-5);font-size:var(--font-sm);color:var(--color-text-secondary);cursor:pointer;">
-          <input type="checkbox" id="agree" class="admin-checkbox" style="margin-top:2px;">
-          <span>Saya menyetujui <a href="#" style="color:var(--panrb-blue);font-weight:600;">Syarat Layanan</a> dan <a href="#" style="color:var(--panrb-blue);font-weight:600;">Kebijakan Privasi</a>.</span>
+        <label class="check-label is-terms">
+          <input type="checkbox" id="agree">
+          <span>Saya menyetujui <a class="text-link" href="#">Syarat Layanan</a> dan <a class="text-link" href="#">Kebijakan Privasi</a>.</span>
         </label>
 
         <button type="submit" class="btn btn-primary" id="submit-btn">Daftar &amp; verifikasi</button>
@@ -159,15 +158,12 @@ function redirectAfter(): void {
 function showSuccess(): void {
   const app = getAppContainer();
   app.innerHTML = `
-    <div class="auth-card" style="text-align:center;">
-      <div style="width:64px;height:64px;border-radius:var(--radius-full);background:#E8F5EC;color:var(--color-success);display:flex;align-items:center;justify-content:center;margin:0 auto var(--space-5);">
-        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-      </div>
-      <div class="form-header" style="text-align:center;">
+    <div class="auth-card">
+      <div class="form-header">
         <h1>Akun berhasil dibuat</h1>
         <p>Anda sudah masuk. Lanjutkan ke portal layanan PANRB.</p>
       </div>
-      <button type="button" class="btn btn-primary" id="continue-btn">Buka Portal</button>
+      <button type="button" class="btn btn-primary" id="continue-btn">Buka portal</button>
     </div>
   `;
   document.getElementById('continue-btn')?.addEventListener('click', redirectAfter);
@@ -210,7 +206,7 @@ function initForm(): void {
 
     const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<div class="spinner"></div> Mendaftar...';
+    submitBtn.innerHTML = '<div class="spinner"></div> Mendaftar…';
 
     try {
       // Backend accepts only { name, email, password }; NIP/instansi not yet persisted.

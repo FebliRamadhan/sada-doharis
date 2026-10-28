@@ -30,6 +30,10 @@ export const endpoints = {
   mfaDisable: `${API_BASE}/auth/mfa/disable`,
   adminMfaUsers: `${API_BASE}/admin/mfa/users`,
   adminMfaDisable: (id: string) => `${API_BASE}/admin/mfa/users/${id}/disable`,
+  // Masa Berlaku Password LDAP
+  passwordChangeExpired: `${API_BASE}/auth/password/change-expired`,
+  passwordChange: `${API_BASE}/auth/password/change`,
+  userRequirePasswordChange: (id: string) => `${API_BASE}/users/${id}/password/require-change`,
 };
 
 // Storage keys
@@ -46,6 +50,14 @@ export interface User {
   name: string;
   userType: 'INTERNAL' | 'GOVERNMENT' | 'EXTERNAL';
   isAdmin?: boolean;
+  passwordExpiry?: PasswordExpiry;
+}
+
+/** Masa Berlaku Password LDAP — daysLeft null berarti tidak berlaku bagi user ini. */
+export interface PasswordExpiry {
+  status: 'ok' | 'warning' | 'expired';
+  daysLeft: number | null;
+  expiresAt: string | null;
 }
 
 export interface OAuthClient {
@@ -191,6 +203,8 @@ export interface ApiResult<T> {
   data?: T;
   meta?: PaginatedResponse<unknown>['meta'];
   error?: string;
+  /** Rincian error per isian dari server (mis. { new_password: ['...'] }). */
+  details?: Record<string, string[]>;
   /**
    * HTTP status, or 0 when the request never reached the server. Callers need
    * this to tell "your session ended" (401) apart from "the network is down"
@@ -294,6 +308,7 @@ export async function apiRequest<T>(
           json?.error?.message ||
           json?.message ||
           `Request failed (${response.status} ${response.statusText})`,
+        details: json?.error?.details,
       };
     }
 

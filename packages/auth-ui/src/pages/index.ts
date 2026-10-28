@@ -11,3 +11,4 @@ export { CallbackPage } from './CallbackPage';
 export { AdminPage } from './AdminPage';
 export { MFAVerifyPage } from './MFAVerifyPage';
 export { MFASetupPage } from './MFASetupPage';
+export { ChangePasswordPage } from './ChangePasswordPage';

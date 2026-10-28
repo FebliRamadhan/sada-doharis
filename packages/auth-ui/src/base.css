@@ -1,0 +1,71 @@
+/* Aturan dasar yang sudah diputuskan oleh Floor Hallmark (app scope). */
+html,
+body {
+  overflow-x: clip;
+}
+html {
+  scrollbar-color: var(--color-muted) var(--color-paper);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+body {
+  min-height: 100%;
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.6;
+  caret-color: var(--color-accent);
+}
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 22%, transparent);
+  color: var(--color-ink);
+}
+
+/*
+ * Cincin fokus untuk setiap elemen interaktif, muncul seketika. `!important`
+ * karena banyak kontrol di src/pages masih ber-style inline, dan inline selalu
+ * menang atas stylesheet.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex], [contenteditable]):focus-visible {
+  outline: 2px solid var(--color-focus) !important;
+  outline-offset: 2px !important;
+  transition: none !important;
+}
+
+h1,
+h2,
+h3 {
+  font-synthesis: none;
+  overflow-wrap: break-word;
+  min-width: 0;
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+.num,
+td.num {
+  font-variant-numeric: tabular-nums;
+}
+[hidden] {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

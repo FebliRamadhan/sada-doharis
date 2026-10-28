@@ -6,6 +6,8 @@
 import { endpoints, apiRequest, setStoredToken, setStoredUser, type User } from '../api';
 import { router, getAppContainer, getQueryParams } from '../router';
 import { MFA_TICKET_KEY, MFA_RETURN_URL_KEY } from './MFAVerifyPage';
+import { continueAfterLogin, redirectIfPasswordChangeRequired } from '../password-gate';
+import { brandPanel, MOBILE_LOGO } from '../shell';
 
 interface SetupData {
   secret: string;
@@ -26,11 +28,12 @@ export async function MFASetupPage(): Promise<void> {
 
   app.innerHTML = `
     <div class="sso-auth">
-      ${brandPanel()}
-      <div class="sso-form" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 40px;position:relative;overflow-y:auto;">
-        <div style="width:100%;max-width:420px;">
+      ${brandPanel('Aktifkan verifikasi 2 langkah untuk mengamankan akun PANRB Anda.')}
+      <div class="sso-form">
+        ${MOBILE_LOGO}
+        <div class="sso-form-body">
           <div class="form-header">
-            <h1>Aktifkan Verifikasi Dua Langkah</h1>
+            <h1>Aktifkan verifikasi dua langkah</h1>
             <p>Akun internal wajib menggunakan MFA. Pindai QR di bawah dengan aplikasi
                authenticator (Google Authenticator, Authy, dll).</p>
           </div>
@@ -43,7 +46,7 @@ export async function MFASetupPage(): Promise<void> {
           </div>
 
           <div id="setup-body">
-            <div class="loading-state"><div class="spinner spinner-dark spinner-lg"></div><p>Menyiapkan...</p></div>
+            <div class="loading-state"><div class="spinner spinner-dark spinner-lg"></div><p>Menyiapkan…</p></div>
           </div>
         </div>
       </div>
@@ -51,25 +54,6 @@ export async function MFASetupPage(): Promise<void> {
   `;
 
   await loadSetup(ticket);
-}
-
-function brandPanel(): string {
-  return `
-    <div class="sso-brand" style="position:relative;width:46%;min-width:420px;overflow:hidden;padding:56px 56px 44px;display:flex;flex-direction:column;justify-content:space-between;color:#fff;background:radial-gradient(circle at 16% 10%, rgba(245,194,24,.18), transparent 40%), radial-gradient(circle at 88% 92%, rgba(40,148,217,.28), transparent 46%), linear-gradient(158deg,#01347C 0%,#00235A 100%);">
-      <div style="position:absolute;top:-120px;right:-120px;width:340px;height:340px;border-radius:50%;border:1.5px solid rgba(255,255,255,.07)"></div>
-      <div style="position:absolute;top:-60px;right:-60px;width:220px;height:220px;border-radius:50%;border:1.5px solid rgba(255,255,255,.07)"></div>
-      <div style="position:relative;">
-        <div style="display:inline-flex;align-items:center;background:#fff;border-radius:14px;padding:10px 18px;box-shadow:0 4px 20px rgba(0,0,0,.25);">
-          <img src="/logo-panrb.png" alt="Logo Kementerian PANRB" style="height:44px;width:auto;display:block;">
-        </div>
-      </div>
-      <div style="position:relative;max-width:380px;">
-        <div style="font:800 34px/1.18 'Plus Jakarta Sans';margin-bottom:16px;">Satu akun untuk semua layanan PANRB.</div>
-        <div style="font:400 14px/1.6 'Inter';color:rgba(255,255,255,.72);">Aktifkan verifikasi 2 langkah untuk mengamankan akun PANRB Anda.</div>
-      </div>
-      <div style="position:relative;font:500 11px 'Inter';color:rgba(255,255,255,.5);">© 2026 Kementerian PANRB · Republik Indonesia</div>
-    </div>
-  `;
 }
 
 function showError(message: string): void {
@@ -106,28 +90,22 @@ async function loadSetup(ticket: string): Promise<void> {
 
   const { qr, secret } = result.data;
   body.innerHTML = `
-    <div style="text-align:center; margin-bottom: var(--space-5);">
-      <img src="${qr}" alt="QR code MFA" width="200" height="200"
-           style="display:block; margin:0 auto; border-radius: var(--radius-lg); border: 1px solid var(--color-border);" />
-      <p style="font-size: var(--font-xs); color: var(--color-text-muted); margin-top: var(--space-2);">
-        Tidak bisa memindai? Masukkan kode ini secara manual:
-      </p>
-      <code style="display:inline-block; font-size: var(--font-sm); font-weight:600; letter-spacing:.1em;
-                   background: var(--color-surface-muted); padding: var(--space-2) var(--space-3);
-                   border-radius: var(--radius-md); word-break: break-all;">${secret}</code>
-    </div>
-
-    <form id="enable-form" novalidate>
-      <div class="form-group">
-        <label class="form-label" for="enable-code">Kode dari Authenticator</label>
-        <div class="input-wrapper">
-          <input type="text" id="enable-code" class="form-input" inputmode="numeric"
-                 autocomplete="one-time-code" placeholder="123456" required
-                 style="padding-left: var(--space-4); letter-spacing:.3em;">
-        </div>
-      </div>
-      <button type="submit" class="btn btn-primary" id="enable-btn">Aktifkan &amp; Lanjutkan</button>
-    </form>
+    <ol class="auth-steps">
+      <li class="auth-step">
+        <p class="auth-step-title">Pindai kode QR</p>
+        <img class="qr-frame" src="${qr}" alt="Kode QR untuk aplikasi authenticator" width="176" height="176" />
+        <p class="auth-step-note">Tidak bisa memindai? Masukkan kode ini secara manual:</p>
+        <code class="secret-code">${secret}</code>
+      </li>
+      <li class="auth-step">
+        <form id="enable-form" novalidate>
+          <label class="auth-step-title" for="enable-code">Masukkan kode dari authenticator</label>
+          <input type="text" id="enable-code" class="form-input is-plain is-code" inputmode="numeric"
+                 autocomplete="one-time-code" placeholder="123456" required>
+          <button type="submit" class="btn btn-primary" id="enable-btn">Aktifkan dan lanjutkan</button>
+        </form>
+      </li>
+    </ol>
   `;
 
   const form = document.getElementById('enable-form') as HTMLFormElement | null;
@@ -143,7 +121,7 @@ async function confirmEnable(ticket: string): Promise<void> {
     (document.getElementById('enable-code') as HTMLInputElement | null)?.value.trim() ?? '';
   const btn = document.getElementById('enable-btn') as HTMLButtonElement;
   btn.disabled = true;
-  btn.innerHTML = '<div class="spinner"></div> Mengaktifkan...';
+  btn.innerHTML = '<div class="spinner"></div> Mengaktifkan…';
 
   try {
     const result = await apiRequest<Record<string, unknown>>(endpoints.mfaEnable, {
@@ -155,12 +133,12 @@ async function confirmEnable(ticket: string): Promise<void> {
     } else {
       showError(result.error || 'Kode tidak valid.');
       btn.disabled = false;
-      btn.textContent = 'Aktifkan & Lanjutkan';
+      btn.textContent = 'Aktifkan dan lanjutkan';
     }
   } catch {
     showError('Terjadi kesalahan jaringan. Silakan coba kembali.');
     btn.disabled = false;
-    btn.textContent = 'Aktifkan & Lanjutkan';
+    btn.textContent = 'Aktifkan dan lanjutkan';
   }
 }
 
@@ -180,26 +158,19 @@ function showBackupCodes(data: Record<string, unknown>): void {
   if (!body) return;
 
   body.innerHTML = `
-    <div class="alert alert-success" role="alert" style="margin-bottom: var(--space-5);">
-      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
-      <span>MFA aktif. Simpan kode cadangan ini di tempat aman — masing-masing hanya bisa dipakai sekali.</span>
+    <div class="alert alert-success" role="status">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+      <span>MFA aktif. Simpan kode cadangan ini di tempat aman; masing-masing hanya bisa dipakai sekali.</span>
     </div>
 
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: var(--space-2);
-                background: var(--color-surface-muted); padding: var(--space-4);
-                border-radius: var(--radius-lg); margin-bottom: var(--space-5);">
-      ${codes
-        .map(
-          (c) =>
-            `<code style="font-size: var(--font-sm); font-weight:600; letter-spacing:.08em; text-align:center;">${c}</code>`
-        )
-        .join('')}
-    </div>
+    <ul class="backup-codes">
+      ${codes.map((c) => `<li><code>${c}</code></li>`).join('')}
+    </ul>
 
-    <button type="button" class="btn btn-secondary" id="copy-codes" style="margin-bottom: var(--space-3);">
-      Salin kode
-    </button>
-    <button type="button" class="btn btn-primary" id="continue-btn">Saya sudah menyimpan — Lanjutkan</button>
+    <div class="auth-actions">
+      <button type="button" class="btn btn-primary" id="continue-btn">Saya sudah menyimpan, lanjutkan</button>
+      <button type="button" class="btn btn-secondary" id="copy-codes">Salin kode</button>
+    </div>
   `;
 
   document.getElementById('copy-codes')?.addEventListener('click', () => {
@@ -209,10 +180,8 @@ function showBackupCodes(data: Record<string, unknown>): void {
     const returnUrl =
       getQueryParams().get('return_url') ?? sessionStorage.getItem(MFA_RETURN_URL_KEY);
     sessionStorage.removeItem(MFA_RETURN_URL_KEY);
-    if (returnUrl) {
-      window.location.href = returnUrl;
-    } else {
-      router.navigate('/');
-    }
+    // Password kedaluwarsa: server mengirim tiket ganti password bersama kode cadangan.
+    if (redirectIfPasswordChangeRequired(data, returnUrl)) return;
+    continueAfterLogin(user, returnUrl);
   });
 }
