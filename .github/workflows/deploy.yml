@@ -21,6 +21,11 @@ jobs:
     name: Deploy to production
     # Self-hosted runner required: PROD_HOST is a private LAN IP unreachable from cloud runners
     runs-on: self-hosted
+    # GITHUB_TOKEN dipakai server untuk pull image dari GHCR (lihat langkah
+    # "Pull, migrate, restart"); ia hanya perlu membaca package repo ini.
+    permissions:
+      contents: read
+      packages: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     environment:
       name: production
@@ -70,8 +75,10 @@ jobs:
           PORT: ${{ secrets.PROD_SSH_PORT || 22 }}
           DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
           VERSION: ${{ steps.tag.outputs.tag }}
-          GHCR_USER: ${{ secrets.GHCR_USER }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          # Token job, bukan PAT: berlaku selama job berjalan, jadi tidak bisa
+          # kedaluwarsa diam-diam seperti secrets.GHCR_TOKEN dulu ("denied").
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           REPO_LC="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
           # Nilai dikirim lewat stdin (bukan argumen) supaya token tidak tampak di daftar proses.
@@ -85,6 +92,8 @@ jobs:
           cd "$DEPLOY_PATH"
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
           docker compose -f docker-compose.prod.yml pull
+          # Token job mati setelah job selesai; jangan tinggalkan login basi di server.
+          docker logout ghcr.io
           docker compose -f docker-compose.prod.yml run --rm auth-service \
             pnpm --filter @sada/auth-service exec prisma migrate deploy \
             --schema=../../prisma/schema.prisma
