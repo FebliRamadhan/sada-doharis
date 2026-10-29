@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/database.js';
-import { ldapService } from './ldap.service.js';
+import { ldapService, LdapAuthError } from './ldap.service.js';
 import { splpService } from './splp.service.js';
 import { tokenService } from './token.service.js';
 import { pegawaiService } from './pegawai.service.js';
@@ -11,6 +11,9 @@ import {
   type PasswordStatus,
 } from './password-expiry.service.js';
 import {
+  AppError,
+  ErrorCodes,
+  ForbiddenError,
   UserType,
   UnauthorizedError,
   NotFoundError,
@@ -19,6 +22,7 @@ import {
   type UserCreate,
   type SplpUser,
   type LdapUser,
+  type LdapDirectory,
 } from '@sada/shared';
 
 const logger = createLogger('user-service');
@@ -70,6 +74,48 @@ function latestPasswordChange(
 ): Date | undefined {
   if (!fromDirectory) return known ?? undefined;
   return known && known > fromDirectory ? known : fromDirectory;
+}
+
+/**
+ * Direktori ditemukan di tempat lain daripada yang mengikat akun
+ * (docs/adr/0004). Password-nya benar, jadi ini bukan kegagalan login yang
+ * dihitung ke lockout; admin harus menjalankan Pindahkan Direktori.
+ */
+export class DirectoryMismatchError extends ForbiddenError {
+  constructor() {
+    super('Akun Anda perlu diverifikasi admin. Hubungi helpdesk.');
+  }
+}
+
+/** Direktori LDAP tak terjangkau: gagal tertutup, bukan "password salah". */
+function ldapUnavailable(): AppError {
+  return new AppError(
+    ErrorCodes.SERVICE_UNAVAILABLE,
+    'Layanan login sedang bermasalah. Coba lagi beberapa saat lagi.',
+    503
+  );
+}
+
+/**
+ * Tolak login bila user sudah terikat ke direktori lain. User lama tanpa
+ * catatan (null) dianggap belum terikat dan akan diikat saat ini.
+ */
+async function assertDirectoryMatches(
+  user: { id: string; email: string; ldapDirectory: LdapDirectory | null },
+  found: LdapDirectory
+): Promise<void> {
+  if (!user.ldapDirectory || user.ldapDirectory === found) return;
+  logger.warn('LDAP directory mismatch', {
+    userId: user.id,
+    bound: user.ldapDirectory,
+    found,
+  });
+  await auditService.log({
+    action: AUDIT_ACTIONS.LOGIN_DIRECTORY_MISMATCH,
+    userId: user.id,
+    details: { bound: user.ldapDirectory, found },
+  });
+  throw new DirectoryMismatchError();
 }
 
 function assertNotLocked(user: { lockedUntil: Date | null; email: string }): void {
@@ -148,7 +194,8 @@ export const userService = {
       try {
         // Extract username from email for LDAP
         const username = email.split('@')[0];
-        const ldapUser = await ldapService.authenticate(username, password);
+        const ldapUser = await ldapService.authenticateAny(username, password);
+        const directory = ldapUser.directory ?? 'PRIMARY';
 
         // Fetch additional profile from tb_master_pegawai
         let pegawaiProfile = null;
@@ -163,11 +210,14 @@ export const userService = {
           },
         });
 
+        if (user) await assertDirectoryMatches(user, directory);
+
         const userData = {
           email: ldapUser.mail || email,
           name: pegawaiProfile?.nama || ldapUser.cn,
           userType: UserType.INTERNAL,
           ldapDn: ldapUser.dn,
+          ldapDirectory: directory,
           provider: 'ldap',
           providerId: pegawaiProfile?.nip || ldapUser.uid,
         };
@@ -185,6 +235,7 @@ export const userService = {
               email: userData.email,
               name: userData.name,
               ldapDn: ldapUser.dn,
+              ldapDirectory: directory,
               providerId: userData.providerId,
               passwordChangedAt: latestPasswordChange(
                 user.passwordChangedAt,
@@ -208,6 +259,11 @@ export const userService = {
 
         return sanitizedUser;
       } catch (error) {
+        // Bukan salah password: jangan dihitung ke lockout.
+        if (error instanceof DirectoryMismatchError) throw error;
+        if (error instanceof LdapAuthError && error.failure === 'unavailable') {
+          throw ldapUnavailable();
+        }
         logger.warn('LDAP auth failed for internal email', { email, error });
         if (lockCandidate) await recordFailedAttempt(lockCandidate.id);
         throw new UnauthorizedError('Invalid credentials');
@@ -257,11 +313,15 @@ export const userService = {
 
     let ldapUser;
     try {
-      ldapUser = await ldapService.authenticate(username, password);
+      ldapUser = await ldapService.authenticateAny(username, password);
     } catch (error) {
+      if (error instanceof LdapAuthError && error.failure === 'unavailable') {
+        throw ldapUnavailable();
+      }
       if (preLockUser) await recordFailedAttempt(preLockUser.id);
-      throw error;
+      throw new UnauthorizedError('Invalid credentials');
     }
+    const directory = ldapUser.directory ?? 'PRIMARY';
 
     const resolvedEmail = ldapUser.mail || `${ldapUser.uid}@${internalDomain}`;
 
@@ -276,6 +336,8 @@ export const userService = {
       },
     });
 
+    if (user) await assertDirectoryMatches(user, directory);
+
     if (!user) {
       user = await prisma.user.create({
         data: {
@@ -283,6 +345,7 @@ export const userService = {
           name: ldapUser.cn,
           userType: UserType.INTERNAL,
           ldapDn: ldapUser.dn,
+          ldapDirectory: directory,
           provider: 'ldap',
           providerId: ldapUser.uid,
           passwordChangedAt: ldapUser.passwordChangedAt,
@@ -294,6 +357,7 @@ export const userService = {
       const updateData: Record<string, string | Date | undefined> = {
         name: ldapUser.cn,
         ldapDn: ldapUser.dn,
+        ldapDirectory: directory,
         passwordChangedAt: latestPasswordChange(user.passwordChangedAt, ldapUser.passwordChangedAt),
       };
       if (user.email.endsWith('@internal')) {
@@ -413,6 +477,7 @@ export const userService = {
     userType?: UserType;
     mfaEnabled?: boolean;
     passwordStatus?: PasswordStatus;
+    ldapDirectory?: LdapDirectory;
   }) {
     const page = Math.max(1, opts.page ?? 1);
     const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
@@ -430,6 +495,7 @@ export const userService = {
     if (opts.isActive !== undefined) where['isActive'] = opts.isActive;
     if (opts.userType) where['userType'] = opts.userType;
     if (opts.mfaEnabled !== undefined) where['mfaEnabled'] = opts.mfaEnabled;
+    if (opts.ldapDirectory) where['ldapDirectory'] = opts.ldapDirectory;
     if (opts.passwordStatus) {
       // Digabung lewat AND karena filter status password sendiri memakai OR/NOT.
       where['AND'] = [passwordStatusWhere(opts.passwordStatus)];
@@ -451,6 +517,7 @@ export const userService = {
           mfaEnabled: true,
           passwordChangedAt: true,
           passwordMustChange: true,
+          ldapDirectory: true,
           createdAt: true,
         },
       }),
@@ -507,6 +574,39 @@ export const userService = {
     });
     logger.info('Password change required by admin', { userId: id });
     return { ...user, passwordExpiry: getPasswordExpiry(user) };
+  },
+
+  /**
+   * Admin: Pindahkan Direktori (CONTEXT.md, docs/adr/0004). Hanya mengganti
+   * direktori yang mengikat user; pemanggil mencabut sesinya. Login berikutnya
+   * harus berhasil di direktori yang baru.
+   */
+  async moveLdapDirectory(id: string, directory: LdapDirectory) {
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { userType: true, ldapDirectory: true },
+    });
+    if (!target) throw new NotFoundError('User', id);
+    if (target.userType !== UserType.INTERNAL) {
+      throw new ConflictError('Direktori hanya berlaku untuk user INTERNAL');
+    }
+    if ((target.ldapDirectory ?? 'PRIMARY') === directory) {
+      throw new ConflictError('User sudah terikat ke direktori ini');
+    }
+    if (directory === 'SECONDARY' && !ldapService.isSecondaryConfigured()) {
+      throw new ConflictError('Direktori secondary belum dikonfigurasi');
+    }
+    const user = await prisma.user.update({
+      where: { id },
+      data: { ldapDirectory: directory },
+      select: { id: true, email: true, userType: true, ldapDirectory: true },
+    });
+    logger.info('LDAP directory moved by admin', {
+      userId: id,
+      from: target.ldapDirectory,
+      to: directory,
+    });
+    return { user, from: target.ldapDirectory };
   },
 
   /** Whether an email maps to a resettable local-password account. */

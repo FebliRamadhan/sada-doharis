@@ -34,6 +34,8 @@ export const endpoints = {
   passwordChangeExpired: `${API_BASE}/auth/password/change-expired`,
   passwordChange: `${API_BASE}/auth/password/change`,
   userRequirePasswordChange: (id: string) => `${API_BASE}/users/${id}/password/require-change`,
+  // Direktori LDAP (docs/adr/0004)
+  userLdapDirectory: (id: string) => `${API_BASE}/users/${id}/ldap-directory`,
 };
 
 // Storage keys

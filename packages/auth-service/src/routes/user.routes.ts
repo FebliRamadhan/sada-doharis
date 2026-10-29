@@ -12,7 +12,7 @@ import {
   type UserType,
 } from '@sada/shared';
 import { adminGuard } from '../middleware/adminGuard.js';
-import { auditService } from '../services/audit.service.js';
+import { auditService, AUDIT_ACTIONS } from '../services/audit.service.js';
 import { revokeAllUserAccess } from '../services/login-issuer.service.js';
 
 const router = Router();
@@ -36,7 +36,10 @@ const listFilterSchema = z.object({
   type: z.enum(['all', 'INTERNAL', 'GOVERNMENT', 'EXTERNAL']).optional(),
   mfa: z.enum(['all', 'enabled', 'pending']).optional(),
   password: z.enum(['all', 'ok', 'warning', 'expired']).optional(),
+  directory: z.enum(['all', 'PRIMARY', 'SECONDARY']).optional(),
 });
+
+const moveDirectorySchema = z.object({ directory: z.enum(['PRIMARY', 'SECONDARY']) });
 
 /**
  * @swagger
@@ -56,11 +59,12 @@ router.get('/', adminGuard, async (req: Request, res: Response, next: NextFuncti
       type: req.query['type'],
       mfa: req.query['mfa'],
       password: req.query['password'],
+      directory: req.query['directory'],
     });
     if (!filters.success) {
       throw new ValidationError('Invalid filter', filters.error.flatten().fieldErrors);
     }
-    const { status, type, mfa, password } = filters.data;
+    const { status, type, mfa, password, directory } = filters.data;
 
     const { users, meta } = await userService.list({
       page,
@@ -70,6 +74,7 @@ router.get('/', adminGuard, async (req: Request, res: Response, next: NextFuncti
       ...(type && type !== 'all' ? { userType: type as UserType } : {}),
       ...(mfa && mfa !== 'all' ? { mfaEnabled: mfa === 'enabled' } : {}),
       ...(password && password !== 'all' ? { passwordStatus: password } : {}),
+      ...(directory && directory !== 'all' ? { ldapDirectory: directory } : {}),
     });
     sendPaginated(res, users, meta.page, meta.limit, meta.total, {
       active: meta.activeCount,
@@ -124,6 +129,46 @@ router.post(
         ip: req.ip,
         userAgent: req.headers['user-agent'],
         details: { by: (res.locals['adminUserId'] as string | undefined) ?? null },
+      });
+      sendSuccess(res, user);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /users/{id}/ldap-directory:
+ *   post:
+ *     summary: Pindahkan Direktori (admin)
+ *     description: >
+ *       Mengganti direktori Zimbra yang mengikat user INTERNAL dan mencabut
+ *       semua sesinya (docs/adr/0004).
+ *     tags: [Users]
+ */
+router.post(
+  '/:id/ldap-directory',
+  adminGuard,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = moveDirectorySchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new ValidationError('Invalid request', parsed.error.flatten().fieldErrors);
+      }
+      const id = req.params['id'] as string;
+      const { user, from } = await userService.moveLdapDirectory(id, parsed.data.directory);
+      await revokeAllUserAccess(id);
+      void auditService.log({
+        action: AUDIT_ACTIONS.LDAP_DIRECTORY_MOVED,
+        userId: id,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+        details: {
+          from,
+          to: parsed.data.directory,
+          by: (res.locals['adminUserId'] as string | undefined) ?? null,
+        },
       });
       sendSuccess(res, user);
     } catch (error) {

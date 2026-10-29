@@ -60,6 +60,7 @@ interface AdminUser {
   passwordChangedAt: string | null;
   passwordMustChange: boolean;
   passwordExpiry?: PasswordExpiry;
+  ldapDirectory: 'PRIMARY' | 'SECONDARY' | null;
   createdAt: string;
 }
 
@@ -93,6 +94,7 @@ interface AdminState {
   usersType: 'all' | 'INTERNAL' | 'GOVERNMENT' | 'EXTERNAL';
   usersMfa: 'all' | 'enabled' | 'pending';
   usersPassword: 'all' | 'ok' | 'warning' | 'expired';
+  usersDirectory: 'all' | 'PRIMARY' | 'SECONDARY';
   mfaSearch: string;
   mfaFilter: 'all' | 'enabled' | 'pending';
 }
@@ -120,6 +122,7 @@ const state: AdminState = {
   usersType: 'all',
   usersMfa: 'all',
   usersPassword: 'all',
+  usersDirectory: 'all',
   mfaSearch: '',
   mfaFilter: 'all',
 };
@@ -621,6 +624,7 @@ async function loadUsers(page: number): Promise<void> {
   if (state.usersType !== 'all') q.set('type', state.usersType);
   if (state.usersMfa !== 'all') q.set('mfa', state.usersMfa);
   if (state.usersPassword !== 'all') q.set('password', state.usersPassword);
+  if (state.usersDirectory !== 'all') q.set('directory', state.usersDirectory);
   const r = await apiRequest<AdminUser[]>(`${endpoints.users}?${q.toString()}`);
   state.usersLoading = false;
   if (goneIfUnauthorized(r.status)) return;
@@ -644,7 +648,8 @@ function renderUsersView(): string {
     state.usersStatus !== 'all' ||
     state.usersType !== 'all' ||
     state.usersMfa !== 'all' ||
-    state.usersPassword !== 'all';
+    state.usersPassword !== 'all' ||
+    state.usersDirectory !== 'all';
   const cakupan = menyaring ? 'Sesuai filter' : 'Seluruh akun terdaftar';
 
   const header = `${pageHead(
@@ -678,6 +683,11 @@ function renderUsersView(): string {
         ['warning', 'Segera kedaluwarsa'],
         ['expired', 'Kedaluwarsa'],
       ])}
+      ${filterSelect('users-directory', 'Filter direktori LDAP', state.usersDirectory, [
+        ['all', 'Semua direktori'],
+        ['PRIMARY', 'Direktori primary'],
+        ['SECONDARY', 'Direktori secondary'],
+      ])}
       <button type="button" id="users-search-btn" class="vault-btn-ghost is-outline">Cari</button>
     </div>`;
 
@@ -696,9 +706,9 @@ function renderUsersView(): string {
     ])}
     ${tableWrap(
       'users-table',
-      ['Pengguna', 'Email', 'Tipe', 'Status', 'Password', 'Aksi'],
+      ['Pengguna', 'Email', 'Tipe', 'Direktori', 'Status', 'Password', 'Aksi'],
       state.users.length === 0
-        ? `<tr><td colspan="6">${emptyState('Tidak ada pengguna ditemukan.')}</td></tr>`
+        ? `<tr><td colspan="7">${emptyState('Tidak ada pengguna ditemukan.')}</td></tr>`
         : state.users.map(renderUserRow).join('')
     )}
     ${renderPagination(state.usersMeta, 'users')}`;
@@ -722,6 +732,13 @@ function renderUserRow(u: AdminUser): string {
       ? `<button type="button" class="vault-icon-btn is-text is-warning" title="Cabut semua sesi dan wajibkan ganti password saat login berikutnya" data-action="require-password-change" data-id="${u.id}">Wajibkan ganti</button>`
       : '';
 
+  // Pindahkan Direktori (docs/adr/0004): hanya INTERNAL, bukan diri sendiri.
+  const target = (u.ldapDirectory ?? 'PRIMARY') === 'PRIMARY' ? 'SECONDARY' : 'PRIMARY';
+  const moveDirectory =
+    u.userType === 'INTERNAL' && !isSelf
+      ? `<button type="button" class="vault-icon-btn is-text" title="Ikat user ke direktori ${target.toLowerCase()} dan cabut semua sesinya" data-action="move-directory" data-id="${u.id}" data-name="${escHtml(u.name || u.email)}" data-to="${target}">Pindah ke ${target.toLowerCase()}</button>`
+      : '';
+
   return `
     <tr class="vault-row">
       <td data-label="Pengguna">
@@ -732,12 +749,51 @@ function renderUserRow(u: AdminUser): string {
       </td>
       <td data-label="Email" class="adm-muted">${escHtml(u.email)}</td>
       <td data-label="Tipe" class="adm-muted">${escHtml(u.userType)}</td>
+      <td data-label="Direktori" class="adm-muted">${directoryLabel(u)}</td>
       <td data-label="Status">${status}</td>
       <td data-label="Password">${passwordBadge(u)}</td>
       <td data-label="Aksi" class="is-end">
-        <div class="row-actions is-stack">${requireChange}${action}</div>
+        <div class="row-actions is-stack">${requireChange}${moveDirectory}${action}</div>
       </td>
     </tr>`;
+}
+
+/** Direktori LDAP; hanya bermakna bagi user INTERNAL. */
+function directoryLabel(u: AdminUser): string {
+  if (u.userType !== 'INTERNAL') return '—';
+  return (u.ldapDirectory ?? 'PRIMARY') === 'SECONDARY' ? 'Secondary' : 'Primary';
+}
+
+function openMoveDirectoryConfirm(id: string, name: string, to: 'PRIMARY' | 'SECONDARY'): void {
+  const label = to === 'SECONDARY' ? 'secondary' : 'primary';
+  openModal(
+    confirmDialog({
+      title: 'Pindahkan direktori?',
+      body: `Ikat <strong>${escHtml(name)}</strong> ke direktori ${label}.`,
+      note: 'Semua sesi pengguna dicabut. Login berikutnya harus berhasil di direktori yang baru.',
+      submit: `Pindah ke ${label}`,
+      tone: 'warning',
+    })
+  );
+
+  document.getElementById('modal-cancel')?.addEventListener('click', closeModal);
+  document.getElementById('modal-submit')?.addEventListener('click', async () => {
+    setSubmitLoading(true);
+    const r = await apiRequest(endpoints.userLdapDirectory(id), {
+      method: 'POST',
+      body: JSON.stringify({ directory: to }),
+    });
+    setSubmitLoading(false);
+    if (goneIfUnauthorized(r.status)) return;
+    if (!r.success) {
+      showToast(r.error ?? 'Gagal memindahkan direktori.', 'error');
+      return;
+    }
+    closeModal();
+    showToast(`Pengguna dipindahkan ke direktori ${label}; sesinya dicabut.`, 'success');
+    await loadUsers(state.usersMeta.page);
+    renderMain();
+  });
 }
 
 /** Status Masa Berlaku Password; hanya bermakna bagi user INTERNAL. */
@@ -781,6 +837,19 @@ function attachUsersEvents(): void {
   onFilter('users-type', (v) => (state.usersType = v as typeof state.usersType));
   onFilter('users-mfa', (v) => (state.usersMfa = v as typeof state.usersMfa));
   onFilter('users-password', (v) => (state.usersPassword = v as typeof state.usersPassword));
+  onFilter('users-directory', (v) => (state.usersDirectory = v as typeof state.usersDirectory));
+
+  document.getElementById('users-table')?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(
+      '[data-action="move-directory"]'
+    );
+    if (!btn) return;
+    openMoveDirectoryConfirm(
+      btn.dataset['id'] ?? '',
+      btn.dataset['name'] ?? '',
+      btn.dataset['to'] as 'PRIMARY' | 'SECONDARY'
+    );
+  });
 
   // Wajibkan Ganti Password mencabut semua sesi user — butuh klik kedua untuk
   // konfirmasi (tanpa dialog browser).

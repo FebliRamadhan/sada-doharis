@@ -1,11 +1,19 @@
-import { AppError, ErrorCodes, ValidationError, createLogger } from '@sada/shared';
+import {
+  AppError,
+  ErrorCodes,
+  ValidationError,
+  createLogger,
+  type LdapDirectory,
+} from '@sada/shared';
 
 const logger = createLogger('zimbra-service');
 
 const TIMEOUT_MS = 10_000;
 
-function soapUrl(): string | undefined {
-  return process.env['ZIMBRA_SOAP_URL']?.trim() || undefined;
+/** Tiap Direktori punya server Zimbra sendiri (docs/adr/0004). */
+function soapUrl(directory: LdapDirectory = 'PRIMARY'): string | undefined {
+  const key = directory === 'PRIMARY' ? 'ZIMBRA_SOAP_URL' : 'ZIMBRA2_SOAP_URL';
+  return process.env[key]?.trim() || undefined;
 }
 
 /**
@@ -47,17 +55,23 @@ function readFault(body: unknown): ZimbraFault | null {
  * ada token admin di sini.
  */
 export const zimbraService = {
-  isConfigured(): boolean {
-    return Boolean(soapUrl());
+  isConfigured(directory: LdapDirectory = 'PRIMARY'): boolean {
+    return Boolean(soapUrl(directory));
   },
 
   /**
    * ChangePasswordRequest. Melempar ValidationError (field old_password /
    * new_password) untuk penolakan yang bisa diperbaiki user, dan AppError 503
-   * bila Zimbra tidak bisa dihubungi.
+   * bila Zimbra tidak bisa dihubungi. `directory` memilih server Zimbra milik
+   * direktori user.
    */
-  async changePassword(account: string, oldPassword: string, newPassword: string): Promise<void> {
-    const url = soapUrl();
+  async changePassword(
+    account: string,
+    oldPassword: string,
+    newPassword: string,
+    directory: LdapDirectory = 'PRIMARY'
+  ): Promise<void> {
+    const url = soapUrl(directory);
     if (!url) {
       throw new AppError(
         ErrorCodes.SERVICE_UNAVAILABLE,
@@ -91,7 +105,7 @@ export const zimbraService = {
         res.ok &&
         (body as { Body?: Record<string, unknown> })?.Body?.['ChangePasswordResponse']
       ) {
-        logger.info('Password changed via Zimbra', { account });
+        logger.info('Password changed via Zimbra', { account, directory });
         return;
       }
     } catch (error) {

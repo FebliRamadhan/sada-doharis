@@ -103,7 +103,12 @@ async function changePasswordAndLogin(opts: {
   }
 
   try {
-    await zimbraService.changePassword(user.email, oldPassword, newPassword);
+    await zimbraService.changePassword(
+      user.email,
+      oldPassword,
+      newPassword,
+      user.ldapDirectory ?? 'PRIMARY'
+    );
   } catch (error) {
     if (error instanceof ValidationError && error.details?.['old_password']) {
       const count = await redis.incr(attemptsKey(user.id));
