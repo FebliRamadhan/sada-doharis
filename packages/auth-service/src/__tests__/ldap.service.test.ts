@@ -129,6 +129,7 @@ describe('ldapService', () => {
         mail: 'john.doe@example.com',
         department: 'IT',
         title: 'Engineer',
+        directory: 'PRIMARY',
       });
       expect(bindCallCount).toBe(2); // service bind + user bind
       expect(mockDestroy).toHaveBeenCalled();
@@ -250,7 +251,7 @@ describe('ldapService', () => {
       expect(mockDestroy).toHaveBeenCalled();
     });
 
-    it('should reject when search returns error', async () => {
+    it('should reject as unavailable (not "not found") when search returns error', async () => {
       mockBind.mockImplementation((_dn: string, _pw: string, cb: (err: Error | null) => void) => {
         cb(null);
       });
@@ -265,13 +266,13 @@ describe('ldapService', () => {
       const { ldapService } = await import('../services/ldap.service.js');
 
       await expect(ldapService.authenticate('john.doe', 'password123')).rejects.toThrow(
-        'User not found'
+        'LDAP search failed'
       );
 
       expect(mockDestroy).toHaveBeenCalled();
     });
 
-    it('should reject when search result emits error event', async () => {
+    it('should reject as unavailable when search result errors before any entry', async () => {
       mockBind.mockImplementation((_dn: string, _pw: string, cb: (err: Error | null) => void) => {
         cb(null);
       });
@@ -289,7 +290,7 @@ describe('ldapService', () => {
       const { ldapService } = await import('../services/ldap.service.js');
 
       await expect(ldapService.authenticate('john.doe', 'password123')).rejects.toThrow(
-        'User not found'
+        'LDAP search failed'
       );
 
       expect(mockDestroy).toHaveBeenCalled();

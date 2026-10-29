@@ -19,21 +19,22 @@ datasource db {
 // User Model
 // ==============================================
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String?
-  name      String
-  userType  UserType @default(EXTERNAL)
-  ldapDn    String?
-  provider  String?
-  providerId String?
-  isActive  Boolean  @default(true)
-  failedLoginAttempts Int       @default(0)
+  id                  String         @id @default(cuid())
+  email               String         @unique
+  password            String?
+  name                String
+  userType            UserType       @default(EXTERNAL)
+  ldapDn              String?
+  ldapDirectory       LdapDirectory? // docs/adr/0004
+  provider            String?
+  providerId          String?
+  isActive            Boolean        @default(true)
+  failedLoginAttempts Int            @default(0)
   lockedUntil         DateTime?
 
   // MFA (TOTP) — wajib untuk user INTERNAL
   mfaEnabled     Boolean   @default(false)
-  mfaSecret      String?   // TOTP secret, dienkripsi at-rest (AES-256-GCM)
+  mfaSecret      String? // TOTP secret, dienkripsi at-rest (AES-256-GCM)
   mfaBackupCodes String[]  @default([]) // bcrypt hash, sekali pakai
   mfaEnabledAt   DateTime?
 
@@ -49,6 +50,11 @@ model User {
 
   @@index([email])
   @@index([provider, providerId])
+}
+
+enum LdapDirectory {
+  PRIMARY
+  SECONDARY
 }
 
 enum UserType {

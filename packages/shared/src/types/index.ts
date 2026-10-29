@@ -178,7 +178,12 @@ export interface LdapUser {
   title?: string;
   /** zimbraPasswordModifiedTime — perubahan password terakhir menurut Zimbra */
   passwordChangedAt?: Date;
+  /** Direktori tempat user ditemukan (CONTEXT.md: Direktori) */
+  directory?: LdapDirectory;
 }
+
+/** Dua direktori Zimbra; lihat docs/adr/0004. */
+export type LdapDirectory = 'PRIMARY' | 'SECONDARY';
 
 export interface SplpUser {
   nip: string;

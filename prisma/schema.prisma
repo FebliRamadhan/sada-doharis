@@ -11,21 +11,22 @@ datasource db {
 // User Model
 // ==============================================
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String?  // null for social auth users
-  name      String
-  userType  UserType @default(EXTERNAL)
-  ldapDn    String?  // LDAP Distinguished Name for internal users
-  provider  String?  // google, facebook, ldap, splp, local
-  providerId String? // External provider's user ID
-  isActive  Boolean  @default(true)
-  failedLoginAttempts Int       @default(0)
+  id                  String         @id @default(cuid())
+  email               String         @unique
+  password            String? // null for social auth users
+  name                String
+  userType            UserType       @default(EXTERNAL)
+  ldapDn              String? // LDAP Distinguished Name for internal users
+  ldapDirectory       LdapDirectory? // direktori Zimbra yang mengikat user INTERNAL (docs/adr/0004)
+  provider            String? // google, facebook, ldap, splp, local
+  providerId          String? // External provider's user ID
+  isActive            Boolean        @default(true)
+  failedLoginAttempts Int            @default(0)
   lockedUntil         DateTime?
 
   // MFA (TOTP) — wajib untuk user INTERNAL
   mfaEnabled     Boolean   @default(false)
-  mfaSecret      String?   // TOTP secret, dienkripsi at-rest (AES-256-GCM)
+  mfaSecret      String? // TOTP secret, dienkripsi at-rest (AES-256-GCM)
   mfaBackupCodes String[]  @default([]) // bcrypt hash, sekali pakai
   mfaEnabledAt   DateTime?
 
@@ -43,10 +44,15 @@ model User {
   @@index([provider, providerId])
 }
 
+enum LdapDirectory {
+  PRIMARY
+  SECONDARY
+}
+
 enum UserType {
-  INTERNAL   // LDAP users (karyawan internal)
+  INTERNAL // LDAP users (karyawan internal)
   GOVERNMENT // SPLP users (ASN pemerintahan)
-  EXTERNAL   // Social auth users (masyarakat umum)
+  EXTERNAL // Social auth users (masyarakat umum)
 }
 
 // ==============================================
@@ -55,7 +61,7 @@ enum UserType {
 model OAuthClient {
   id           String   @id @default(cuid())
   clientId     String   @unique
-  clientSecret String   // Hashed secret
+  clientSecret String // Hashed secret
   name         String
   redirectUris String[] // Allowed redirect URIs
   grants       String[] // authorization_code, client_credentials, refresh_token
@@ -103,9 +109,9 @@ model OAuthAuthorizationCode {
   redirectUri         String
   scopes              String[]
   expiresAt           DateTime
-  codeChallenge       String?  // For PKCE
-  codeChallengeMethod String?  // S256 or plain
-  nonce               String?  // OIDC nonce for replay protection
+  codeChallenge       String? // For PKCE
+  codeChallengeMethod String? // S256 or plain
+  nonce               String? // OIDC nonce for replay protection
   used                Boolean  @default(false) // Single-use enforcement
 
   userId   String
@@ -125,7 +131,7 @@ model OAuthAuthorizationCode {
 // ==============================================
 model AuditLog {
   id        String   @id @default(cuid())
-  action    String   // LOGIN, LOGOUT, LOGIN_FAILED, TOKEN_ISSUED, TOKEN_REVOKED, CLIENT_CREATED, etc.
+  action    String // LOGIN, LOGOUT, LOGIN_FAILED, TOKEN_ISSUED, TOKEN_REVOKED, CLIENT_CREATED, etc.
   userId    String?
   clientId  String?
   ip        String?

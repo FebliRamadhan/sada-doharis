@@ -126,7 +126,12 @@ describe('POST /auth/password/change-expired', () => {
   it('berhasil: ganti di Zimbra sebagai user, catat tanggal, cabut akses lama, lanjut login', async () => {
     const { status, body } = await ganti();
     expect(status).toBe(200);
-    expect(zimbra.changePassword).toHaveBeenCalledWith(BUDI.email, 'Lama#Sekali2025', PW_BARU);
+    expect(zimbra.changePassword).toHaveBeenCalledWith(
+      BUDI.email,
+      'Lama#Sekali2025',
+      PW_BARU,
+      'PRIMARY'
+    );
     expect(db.update).toHaveBeenCalledWith({
       where: { id: 'u1' },
       data: { passwordChangedAt: expect.any(Date), passwordMustChange: false },

@@ -77,4 +77,23 @@ describe('zimbraService.changePassword', () => {
     expect(err.statusCode).toBe(503);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('user direktori secondary diarahkan ke server Zimbra secondary (docs/adr/0004)', async () => {
+    process.env['ZIMBRA2_SOAP_URL'] = 'https://mail2.example.go.id/service/soap';
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ Body: { ChangePasswordResponse: { authToken: [] } } }))
+    );
+    await zimbraService.changePassword('budi@menpan.go.id', 'lama', 'baru', 'SECONDARY');
+    expect(fetchMock.mock.calls[0]![0]).toBe('https://mail2.example.go.id/service/soap');
+    delete process.env['ZIMBRA2_SOAP_URL'];
+  });
+
+  it('secondary tanpa ZIMBRA2_SOAP_URL tidak jatuh ke server primary', async () => {
+    delete process.env['ZIMBRA2_SOAP_URL'];
+    const err = await zimbraService
+      .changePassword('budi@menpan.go.id', 'lama', 'baru', 'SECONDARY')
+      .catch((e) => e);
+    expect(err.statusCode).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
